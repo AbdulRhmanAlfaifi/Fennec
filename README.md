@@ -1,9 +1,14 @@
+<p align="center">
+  <img src="screenshots/fennec_logo.png" width="35%">
+</p>
+
+<p align="center">
+  <img src="https://github.com/abdulrhmanalfaifi/fennec_test_ci/actions/workflows/build.yml/badge.svg">
+</p>
+
 # Fennec 🦊
 
 fennec is an artifact collection tool written in Rust to be used during incident response on *nix based systems. fennec allows you to write a configuration file that contains how to collect artifacts.
-
-
-![Build & Test](https://github.com/abdulrhmanalfaifi/Fennec/actions/workflows/build.yml/badge.svg)
 
 ## Features 🌟
 
