@@ -1,0 +1,45 @@
+on:
+  push:
+    tags:
+      - 'v*'
+
+name: Create Release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v2
+      - name: Download and install rust latest version
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      - name: Build Fennec for the target x86_64-unknown-linux-gnu as static binary
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH";RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --target x86_64-unknown-linux-gnu
+          ./target/x86_64-unknown-linux-gnu/release/fennec -h
+      - name: Check if Fennec build successfuly
+        run: |
+          ./target/x86_64-unknown-linux-gnu/release/fennec -h
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Fennec ${{ github.ref }}
+          body: ${{ github.event.head_commit.message }}
+          draft: false
+          prerelease: false
+      - name: Upload Release Asset
+        id: upload-release-asset 
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
+          asset_path: ./target/x86_64-unknown-linux-gnu/release/fennec
+          asset_name: fennec_x86_64-unknown-linux-gnu
+          asset_content_type: application/x-elf
+    

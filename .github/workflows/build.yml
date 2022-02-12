@@ -1,0 +1,20 @@
+name: Build & Test
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v2
+      - name: Download and install rust latest version
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      - name: Build Fennec for the target x86_64-unknown-linux-gnu as static binary
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH";RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --target x86_64-unknown-linux-gnu
+          ./target/x86_64-unknown-linux-gnu/release/fennec -h
+      - name: Test Fennec
+        run: |
+          ./target/x86_64-unknown-linux-gnu/release/fennec -h
+          sudo ./target/x86_64-unknown-linux-gnu/release/fennec
+          ls -lah ./$HOSTNAME.zip
