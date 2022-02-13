@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="https://github.com/abdulrhmanalfaifi/fennec_test_ci/actions/workflows/build.yml/badge.svg">
+  <img src="https://github.com/abdulrhmanalfaifi/Fennec/actions/workflows/build.yml/badge.svg">
 </p>
 
 # Fennec 🦊
