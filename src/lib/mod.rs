@@ -1,13 +1,12 @@
 ///! A library used to collect triage image from *nix machines
 use chrono::{DateTime, Utc};
 use flate2::read::GzDecoder;
-use readable_perms::PermissionsExt;
 use regex::{self, Regex};
 use std::{
     fmt::Display,
     fs::File,
     io::{Read, Write},
-    os::unix::prelude::MetadataExt,
+    os::unix::prelude::{MetadataExt, PermissionsExt},
     path::{Path, PathBuf},
     result::Result,
     time::SystemTime,
@@ -291,121 +290,135 @@ impl<'a> Fennec<'a> {
 
     /// Start triage collection from the artifacts specified in the configuration
     pub fn triage(&mut self) -> Result<bool, FennecError> {
-        let osquery_instance = OSQuery::new()
+        let mut process_osquery_artifacts = true;
+        let mut osquery_instance = OSQuery::new();
+        match OSQuery::new()
             .spawn_instance(&self._osquery_binary_path)
             .map_err(|e| {
                 FennecError::osquery_instance_error(format!(
                     "Unable to create osquery instance '{}', ERROR: {}",
                     &self._osquery_binary_path, e
                 ))
-            })?;
+            }) {
+            Ok(instance) => osquery_instance = instance,
+            Err(e) => {
+                error!("{}", e.message);
+                process_osquery_artifacts = false;
+                warn!(
+                    "Skiping artifact type '{:?}' duo to the previous error",
+                    ArtifactType::Query
+                );
+            }
+        };
 
         for artifact in self._config.artifacts.iter() {
             let artifact = artifact.clone();
             match artifact.artifact_type {
                 ArtifactType::Query => {
-                    match self._output_file.start_file(
-                        format!("{}.{}", artifact.name, self._extension),
-                        self._foptions,
-                    ) {
-                        Ok(_) => {
-                            info!(
-                                "Start writing the results for the artifact '{}' to '{}'",
-                                artifact.name,
-                                format!("{}.{}", artifact.name, self._extension)
-                            );
-                        }
-                        Err(e) => {
-                            error!("Unable to write the results for the artifact '{}' to '{}', ERROR: '{}'", artifact.name, format!("{}.{}",artifact.name,self._extension), e);
-                        }
-                    };
-                    for sql in artifact.artifacts.iter() {
-                        info!(
-                            "Executing the osquery SQL query '{}' for the artifact '{}'",
-                            sql, artifact.name
-                        );
-                        match osquery_instance.query(sql.to_string()) {
-                            Ok(res) => {
-                                match res.response {
-                                    Some(data) => {
-                                        let status = res.status.unwrap();
-                                        if status.code.unwrap().to_owned() == 0 {
-                                            let mut csv_headers_printed = false;
-                                            for row in data.iter() {
-                                                let mut json = json!({});
-                                                for (k, v) in row {
-                                                    match json {
-                                                        Value::Object(mut obj) => {
-                                                            obj.insert(
-                                                                k.to_string(),
-                                                                Value::String(v.to_string()),
-                                                            );
-                                                            json = Value::Object(obj);
-                                                        }
-                                                        _ => {}
-                                                    };
-                                                }
-
-                                                if let Some(data) = artifact.map(&json) {
-                                                    json = data;
-                                                }
-
-                                                if let OutputFormat::CSV = self._extension {
-                                                    if !csv_headers_printed {
-                                                        let headers: Vec<_> = json
-                                                            .as_object()
-                                                            .unwrap()
-                                                            .keys()
-                                                            .collect();
-                                                        let mut writer =
-                                                            Writer::from_writer(vec![]);
-                                                        writer.write_record(headers).unwrap();
-                                                        let data = String::from_utf8(
-                                                            writer.into_inner().unwrap(),
-                                                        )
-                                                        .unwrap();
-                                                        match self
-                                                            ._output_file
-                                                            .write(data.as_bytes())
-                                                        {
-                                                            Ok(_) => {
-                                                                debug!("Wrote headers for the artifact '{}' to '{}'", artifact.name, format!("{}.{}",artifact.name,self._extension));
-                                                            }
-                                                            Err(e) => {
-                                                                error!("Unable to write the results for the artifact '{}' to '{}', ERROR: '{}'", artifact.name, format!("{}.{}",artifact.name,self._extension), e);
-                                                            }
-                                                        }
-                                                        csv_headers_printed = true
-                                                    }
-                                                }
-
-                                                let data = self.format(&json, &artifact);
-                                                match self._output_file.write(data.as_bytes()) {
-                                                    Ok(n) => {
-                                                        debug!("Wrote '{}' bytes for the artifact '{}' to '{}'", n, artifact.name, format!("{}.{}",artifact.name,self._extension));
-                                                    }
-                                                    Err(e) => {
-                                                        error!("Unable to write the results for the artifact '{}' to '{}', ERROR: '{}'", artifact.name, format!("{}.{}",artifact.name,self._extension), e);
-                                                    }
-                                                }
-                                            }
-                                        } else if status.code.unwrap() == 1 {
-                                            error!(
-                                                "Unable to execute osquery SQL query '{}', ERROR: '{}'",
-                                                sql, status.message.unwrap()
-                                            );
-                                        }
-                                    }
-                                    None => {}
-                                };
-                            }
-                            Err(error) => {
-                                error!(
-                                    "Unable to execute osquery SQL query '{}', ERROR: {}",
-                                    sql, error
+                    if process_osquery_artifacts {
+                        match self._output_file.start_file(
+                            format!("{}.{}", artifact.name, self._extension),
+                            self._foptions,
+                        ) {
+                            Ok(_) => {
+                                info!(
+                                    "Start writing the results for the artifact '{}' to '{}'",
+                                    artifact.name,
+                                    format!("{}.{}", artifact.name, self._extension)
                                 );
                             }
+                            Err(e) => {
+                                error!("Unable to write the results for the artifact '{}' to '{}', ERROR: '{}'", artifact.name, format!("{}.{}",artifact.name,self._extension), e);
+                            }
                         };
+                        for sql in artifact.artifacts.iter() {
+                            info!(
+                                "Executing the osquery SQL query '{}' for the artifact '{}'",
+                                sql, artifact.name
+                            );
+                            match osquery_instance.query(sql.to_string()) {
+                                Ok(res) => {
+                                    match res.response {
+                                        Some(data) => {
+                                            let status = res.status.unwrap();
+                                            if status.code.unwrap().to_owned() == 0 {
+                                                let mut csv_headers_printed = false;
+                                                for row in data.iter() {
+                                                    let mut json = json!({});
+                                                    for (k, v) in row {
+                                                        match json {
+                                                            Value::Object(mut obj) => {
+                                                                obj.insert(
+                                                                    k.to_string(),
+                                                                    Value::String(v.to_string()),
+                                                                );
+                                                                json = Value::Object(obj);
+                                                            }
+                                                            _ => {}
+                                                        };
+                                                    }
+
+                                                    if let Some(data) = artifact.map(&json) {
+                                                        json = data;
+                                                    }
+
+                                                    if let OutputFormat::CSV = self._extension {
+                                                        if !csv_headers_printed {
+                                                            let headers: Vec<_> = json
+                                                                .as_object()
+                                                                .unwrap()
+                                                                .keys()
+                                                                .collect();
+                                                            let mut writer =
+                                                                Writer::from_writer(vec![]);
+                                                            writer.write_record(headers).unwrap();
+                                                            let data = String::from_utf8(
+                                                                writer.into_inner().unwrap(),
+                                                            )
+                                                            .unwrap();
+                                                            match self
+                                                                ._output_file
+                                                                .write(data.as_bytes())
+                                                            {
+                                                                Ok(_) => {
+                                                                    debug!("Wrote headers for the artifact '{}' to '{}'", artifact.name, format!("{}.{}",artifact.name,self._extension));
+                                                                }
+                                                                Err(e) => {
+                                                                    error!("Unable to write the results for the artifact '{}' to '{}', ERROR: '{}'", artifact.name, format!("{}.{}",artifact.name,self._extension), e);
+                                                                }
+                                                            }
+                                                            csv_headers_printed = true
+                                                        }
+                                                    }
+
+                                                    let data = self.format(&json, &artifact);
+                                                    match self._output_file.write(data.as_bytes()) {
+                                                        Ok(n) => {
+                                                            debug!("Wrote '{}' bytes for the artifact '{}' to '{}'", n, artifact.name, format!("{}.{}",artifact.name,self._extension));
+                                                        }
+                                                        Err(e) => {
+                                                            error!("Unable to write the results for the artifact '{}' to '{}', ERROR: '{}'", artifact.name, format!("{}.{}",artifact.name,self._extension), e);
+                                                        }
+                                                    }
+                                                }
+                                            } else if status.code.unwrap() == 1 {
+                                                error!(
+                                                    "Unable to execute osquery SQL query '{}', ERROR: '{}'",
+                                                    sql, status.message.unwrap()
+                                                );
+                                            }
+                                        }
+                                        None => {}
+                                    };
+                                }
+                                Err(error) => {
+                                    error!(
+                                        "Unable to execute osquery SQL query '{}', ERROR: {}",
+                                        sql, error
+                                    );
+                                }
+                            };
+                        }
                     }
                 }
                 ArtifactType::Collection => {
@@ -444,7 +457,8 @@ impl<'a> Fennec<'a> {
                                                 .created()
                                                 .unwrap_or(SystemTime::now())
                                                 .into();
-                                            let per: u32 = metadata.permissions().unix().into();
+                                            // let per: u32 = .unix().into();
+                                            let per = metadata.permissions().mode() & 0x1ff;
                                             let file_type = match metadata.is_file() {
                                                 true => "file",
                                                 false => match metadata.is_dir() {
@@ -456,7 +470,7 @@ impl<'a> Fennec<'a> {
                                                 "full_path": entry.as_path().to_string_lossy(),
                                                 "type": file_type,
                                                 "size": metadata.size(),
-                                                "permessions": format!("{:o}", per),
+                                                "permessions": format!("{:03o}", per),
                                                 "owner_uid": metadata.uid(),
                                                 "owner_gid": metadata.gid(),
                                                 "mtime": mtime.format("%Y-%m-%d %H:%M:%S").to_string(),

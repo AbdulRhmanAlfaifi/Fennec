@@ -25,8 +25,28 @@ use std::{
 };
 use zip::{write::FileOptions, CompressionMethod, ZipWriter};
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[derive(RustEmbed)]
-#[folder = "deps/"]
+#[folder = "deps/linux/"]
+#[include = "config.yaml"]
+#[include = "x86_64/osqueryd"]
+#[prefix = ""]
+struct Asset;
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+#[derive(RustEmbed)]
+#[folder = "deps/linux/"]
+#[include = "config.yaml"]
+#[include = "aarch64/osqueryd"]
+#[prefix = ""]
+struct Asset;
+#[cfg(target_os = "freebsd")]
+#[derive(RustEmbed)]
+#[folder = "deps/freebsd"]
+#[prefix = ""]
+struct Asset;
+#[cfg(target_os = "macos")]
+#[derive(RustEmbed)]
+#[folder = "deps/darwin"]
 #[prefix = ""]
 struct Asset;
 
@@ -63,8 +83,9 @@ fn init_logger(log_path: &str, level: log::LevelFilter, quiet: bool) -> log4rs::
     log4rs::init_config(config).unwrap()
 }
 
-fn init_args<'a>(default_output_name: &'a str, default_log_path: &'a str) -> App<'a> {
-    let matches = App::new(env!("CARGO_PKG_NAME"))
+macro_rules! init_args {
+    ($default_output_name:expr,$default_log_path:expr, $osquery_embedded:expr) => {
+        App::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))
         .author("AbdulRhman Alfaifi <aalfaifi@u0041.co>")
         .about("Aritfact collection tool for *nix systems")
@@ -82,12 +103,17 @@ fn init_args<'a>(default_output_name: &'a str, default_log_path: &'a str) -> App
                 .help("Show the embedded configuration file"),
         )
         .arg(
+            Arg::new("show_embedded")
+                .long("show-embedded")
+                .help("Show the embedded files metadata"),
+        )
+        .arg(
             Arg::new("log_path")
                 .short('f')
                 .long("log-file")
                 .value_name("FILE")
                 .help("Sets the log file name")
-                .default_value(&default_log_path)
+                .default_value($default_log_path)
                 .takes_value(true),
         )
         .arg(
@@ -107,7 +133,7 @@ fn init_args<'a>(default_output_name: &'a str, default_log_path: &'a str) -> App
                 .value_name("FILE")
                 .help("Sets output file name")
                 .takes_value(true)
-                .default_value(default_output_name),
+                .default_value($default_output_name),
         )
         .arg(
             Arg::new("output_format")
@@ -122,7 +148,7 @@ fn init_args<'a>(default_output_name: &'a str, default_log_path: &'a str) -> App
             Arg::new("osquery_path")
                 .long("osquery-path")
                 .value_name("PATH")
-                .help("Sets osquery path, if osquery is embedded it will be writen to this path otherwise the path will be used to spawn osquery instance")
+                .help(format!("Sets osquery path, if osquery is embedded it will be writen to this path otherwise the path will be used to spawn osquery instance (Embedded : {})", $osquery_embedded).as_ref())
                 .takes_value(true)
                 .default_value("./osqueryd"),
         )
@@ -131,10 +157,10 @@ fn init_args<'a>(default_output_name: &'a str, default_log_path: &'a str) -> App
                 .short('q')
                 .long("quiet")
                 .help("Do not print logs to stdout"),
-        );
-
-    matches
+        )
+    };
 }
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EmbeddedConfig {
     args: Option<Vec<String>>,
@@ -144,6 +170,19 @@ fn main() {
     let time_took = Instant::now();
 
     let mut to_cleanup: Vec<String> = vec![];
+
+    let osquery_asset_name = match Asset::iter()
+        .into_iter()
+        .find(|asset_name| asset_name.contains("osqueryd"))
+    {
+        Some(asset_name) => asset_name.to_string().clone(),
+        None => String::new(),
+    };
+
+    let osquery_embedded = match Asset::get(&osquery_asset_name) {
+        Some(_) => true,
+        None => false,
+    };
 
     let default_output_name = match hostname::get() {
         Ok(name) => format!("{}.zip", name.to_string_lossy().to_string()),
@@ -158,7 +197,8 @@ fn main() {
 
     let default_log_path = format!("{}.log", env!("CARGO_PKG_NAME"));
 
-    let cli_matches = init_args(&default_output_name, &default_log_path).get_matches();
+    let cli_matches =
+        init_args!(&default_output_name, &default_log_path, osquery_embedded).get_matches();
 
     let embedded_config = match Asset::get("config.yaml") {
         Some(embedded_config) => Some(embedded_config.data),
@@ -174,17 +214,20 @@ fn main() {
                 Some(mut conf_args) => {
                     let mut args = vec![String::from("")];
                     args.append(&mut conf_args);
-                    init_args(&default_output_name, &default_log_path).get_matches_from(args)
+                    init_args!(&default_output_name, &default_log_path, osquery_embedded)
+                        .get_matches_from(args)
                 }
                 None => {
                     let empty: Vec<String> = vec![];
-                    init_args(&default_output_name, &default_log_path).get_matches_from(empty)
+                    init_args!(&default_output_name, &default_log_path, osquery_embedded)
+                        .get_matches_from(empty)
                 }
             }
         }
         None => {
             let empty: Vec<String> = vec![];
-            init_args(&default_output_name, &default_log_path).get_matches_from(empty)
+            init_args!(&default_output_name, &default_log_path, osquery_embedded)
+                .get_matches_from(empty)
         }
     };
 
@@ -228,6 +271,17 @@ fn main() {
             None => {
                 println!("No embedded configuration");
             }
+        }
+        exit(0);
+    }
+
+    if cli_matches.occurrences_of("show_embedded") >= 1 {
+        for asset_name in Asset::iter() {
+            println!(
+                "{} : {} (bytes)",
+                asset_name,
+                Asset::get(&asset_name).unwrap().data.len()
+            );
         }
         exit(0);
     }
@@ -305,7 +359,7 @@ fn main() {
         }
     };
 
-    match Asset::get("osqueryd") {
+    match Asset::get(&osquery_asset_name) {
         Some(embedded_osquery) => {
             match OpenOptions::new()
                 .mode(0o700)

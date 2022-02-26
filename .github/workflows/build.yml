@@ -1,7 +1,17 @@
 name: Build & Test
-on: [push, pull_request]
+on: 
+  push:
+    paths-ignore:
+    - '.github/**'
+    - 'screenshots/**'
+    - 'README.md'
+  pull_request:
+    paths-ignore:
+    - '.github/**'
+    - 'screenshots/**'
+    - 'README.md'
 jobs:
-  build:
+  build_linux:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository code
@@ -12,9 +22,27 @@ jobs:
       - name: Build Fennec for the target x86_64-unknown-linux-gnu as static binary
         run: |
           export PATH="$HOME/.cargo/bin:$PATH";RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --target x86_64-unknown-linux-gnu
-          ./target/x86_64-unknown-linux-gnu/release/fennec -h
-      - name: Test Fennec
+      - name: Check if Fennec build successfuly
         run: |
           ./target/x86_64-unknown-linux-gnu/release/fennec -h
           sudo ./target/x86_64-unknown-linux-gnu/release/fennec
+          ls -lah ./$HOSTNAME.zip
+  build_darwin:
+    runs-on: macos-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v2
+      - name: Download and install rust latest version
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      - name: Build Fennec for the target x86_64-apple-darwin as static binary
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"; RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --target x86_64-apple-darwin
+      - name: Check if Fennec build successfuly
+        run: |
+          ./target/x86_64-apple-darwin/release/fennec -h
+      - name: Test Fennec
+        run: |
+          ./target/x86_64-apple-darwin/release/fennec -h
+          sudo ./target/x86_64-apple-darwin/release/fennec
           ls -lah ./$HOSTNAME.zip

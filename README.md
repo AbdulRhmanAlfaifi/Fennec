@@ -1,10 +1,12 @@
 <p align="center">
   <img src="screenshots/fennec_logo.png" width="35%">
 </p>
-
 <p align="center">
   <img src="https://github.com/abdulrhmanalfaifi/Fennec/actions/workflows/build.yml/badge.svg">
+  <img src="https://img.shields.io/github/release-date/abdulrhmanalfaifi/fennec">
+  <img src="https://img.shields.io/github/v/release/abdulrhmanalfaifi/fennec">
 </p>
+
 
 # Fennec 🦊
 
@@ -25,21 +27,23 @@ fennec is an artifact collection tool written in Rust to be used during incident
 
 ## Tests 🧪
 
-| OS Details         | Success? | Details                       |
-| ------------------ | -------- | ----------------------------- |
-| Ubuntu 20.04.3 LTS | ✅        |                               |
-| Ubuntu 19.04       | ✅        |                               |
-| Ubuntu 18.04.6 LTS | ✅        |                               |
-| Ubuntu 17.04       | ✅        |                               |
-| Ubuntu 16.04.7 LTS | ✅        |                               |
-| Ubuntu 15.10       | ✅        |                               |
-| Ubuntu 14.04.6 LTS | ✅        |                               |
-| Ubuntu 13.04       | ✅        |                               |
-| Ubuntu 12.04.5 LTS | ✅        |                               |
-| CentOS 8.4.2105    | ✅        |                               |
-| CentOS 7.9.2009    | ✅        |                               |
-| CentOS 6.10        | ✅        |                               |
-| CentOS 5.11        | ❌        | osquery requires libc >= 2.12 |
+| OS Details             | Architecture | Success? | Details                       |
+| ---------------------- | ------------ | -------- | ----------------------------- |
+| Ubuntu 20.04.3 LTS     | x86_64       | ✅        |                               |
+| Ubuntu 19.04           | x86_64       | ✅        |                               |
+| Ubuntu 18.04.6 LTS     | x86_64       | ✅        |                               |
+| Ubuntu 17.04           | x86_64       | ✅        |                               |
+| Ubuntu 16.04.7 LTS     | x86_64       | ✅        |                               |
+| Ubuntu 15.10           | x86_64       | ✅        |                               |
+| Ubuntu 14.04.6 LTS     | x86_64       | ✅        |                               |
+| Ubuntu 13.04           | x86_64       | ✅        |                               |
+| Ubuntu 12.04.5 LTS     | x86_64       | ✅        |                               |
+| CentOS 8.4.2105        | x86_64       | ✅        |                               |
+| CentOS 7.9.2009        | x86_64       | ✅        |                               |
+| CentOS 6.10            | x86_64       | ✅        |                               |
+| CentOS 5.11            | x86_64       | ❌        | osquery requires libc >= 2.12 |
+| Ubuntu 20.04           | aarch64      | ✅        |                               |
+| MacOS Monterey v12.0.1 | x86_64       | ✅        |                               |
 
 ## Usage ✍
 
@@ -86,9 +90,9 @@ OPTIONS:
 
 ## Compile with dependencies 👨‍💻
 
-fennec depends on `osquery` to run the artifacts with the type `query`. The directory called `deps` contains the file that will be embedded into the binary, Before compiling follow the below steps:
+fennec depends on `osquery` to run the artifacts with the type `query`. The directory called `deps` contains the file that will be embedded into the binary depending on the target OS and architecture, Before compiling follow the below steps:
 
-* Modify the configuration file `deps/config.yaml` as needed
+* Modify the configuration file `deps/<TARGET_OS>/config.yaml` as needed
 
 * Build the binary using one of the commands below:
 
