@@ -395,6 +395,9 @@ impl<'a> Fennec<'a> {
                                                     match self._output_file.write(data.as_bytes()) {
                                                         Ok(n) => {
                                                             debug!("Wrote '{}' bytes for the artifact '{}' to '{}'", n, artifact.name, format!("{}.{}",artifact.name,self._extension));
+                                                            if let Err(e) = self._output_file.flush() {
+                                                                error!("Unable to flush stream, ERROR: {}", e);
+                                                            };
                                                         }
                                                         Err(e) => {
                                                             error!("Unable to write the results for the artifact '{}' to '{}', ERROR: '{}'", artifact.name, format!("{}.{}",artifact.name,self._extension), e);
@@ -581,6 +584,9 @@ impl<'a> Fennec<'a> {
                                             artifact.name,
                                             format!("{}.{}", artifact.name, self._extension)
                                         );
+                                        if let Err(e) = self._output_file.flush() {
+                                            error!("Unable to flush stream, ERROR: {}", e);
+                                        };
                                     }
                                     Err(e) => {
                                         error!("Unable to write the results for the artifact '{}' to '{}', ERROR: '{}'", artifact.name, format!("{}.{}",artifact.name,self._extension), e);
@@ -590,6 +596,9 @@ impl<'a> Fennec<'a> {
 
                             for line in files_metadata.iter() {
                                 self._output_file.write(line.as_bytes()).unwrap();
+                                if let Err(e) = self._output_file.flush() {
+                                    error!("Unable to flush stream, ERROR: {}", e);
+                                };
                             }
                         }
                         Err(e) => {
@@ -656,6 +665,9 @@ impl<'a> Fennec<'a> {
                                                 match self._output_file.write(data.as_bytes()) {
                                                     Ok(_) => {
                                                         debug!("Wrote headers for the artifact '{}' to '{}'", artifact.name, format!("{}.{}",artifact.name,self._extension));
+                                                        if let Err(e) = self._output_file.flush() {
+                                                            error!("Unable to flush stream, ERROR: {}", e);
+                                                        };
                                                     }
                                                     Err(e) => {
                                                         error!("Unable to write the results for the artifact '{}' to '{}', ERROR: '{}'", artifact.name, format!("{}.{}",artifact.name,self._extension), e);
@@ -669,6 +681,9 @@ impl<'a> Fennec<'a> {
                                         match self._output_file.write(data.as_bytes()) {
                                             Ok(n) => {
                                                 debug!("Wrote '{}' bytes for the artifact '{}' to '{}'", n, artifact.name, format!("{}.{}",artifact.name,self._extension));
+                                                if let Err(e) = self._output_file.flush() {
+                                                    error!("Unable to flush stream, ERROR: {}", e);
+                                                };
                                             }
                                             Err(e) => {
                                                 error!("Unable to write the results for the artifact '{}' to '{}', ERROR: '{}'", artifact.name, format!("{}.{}",artifact.name,self._extension), e);
@@ -693,6 +708,9 @@ impl<'a> Fennec<'a> {
                                         match self._output_file.write(data.as_bytes()) {
                                             Ok(n) => {
                                                 debug!("Wrote '{}' bytes for the artifact '{}' to '{}'", n, artifact.name, format!("{}.{}",artifact.name,self._extension));
+                                                if let Err(e) = self._output_file.flush() {
+                                                    error!("Unable to flush stream, ERROR: {}", e);
+                                                };
                                             }
                                             Err(e) => {
                                                 error!("Unable to write the results for the artifact '{}' to '{}', ERROR: '{}'", artifact.name, format!("{}.{}",artifact.name,self._extension), e);
