@@ -22,7 +22,7 @@ fennec is an artifact collection tool written in Rust to be used during incident
 * 🧱 Return data in structured manner 
 * 🃏  Support multiple output formats (JSONL, CSV and KJSON) 
 * 🤸‍♀️ Flexible configuration file 
-* 💾 Directly write to ZIP file to safe space 
+* 💾 Directly write to ZIP file to save space 
 * ⚡ Very fast!
 
 ## Tests 🧪
