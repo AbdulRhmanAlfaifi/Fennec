@@ -1,3 +1,8 @@
+# Fennec v0.2.2
+* Fixes issue #6
+* Pump up dependencies
+# Fennec v0.2.1
+* Fixes issue #5
 # Fennec v0.2.0
 * Added support for `macos`
 * Added support for `Linux aarch64` architecture

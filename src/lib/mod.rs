@@ -395,7 +395,9 @@ impl<'a> Fennec<'a> {
                                                     match self._output_file.write(data.as_bytes()) {
                                                         Ok(n) => {
                                                             debug!("Wrote '{}' bytes for the artifact '{}' to '{}'", n, artifact.name, format!("{}.{}",artifact.name,self._extension));
-                                                            if let Err(e) = self._output_file.flush() {
+                                                            if let Err(e) =
+                                                                self._output_file.flush()
+                                                            {
                                                                 error!("Unable to flush stream, ERROR: {}", e);
                                                             };
                                                         }
@@ -666,7 +668,10 @@ impl<'a> Fennec<'a> {
                                                     Ok(_) => {
                                                         debug!("Wrote headers for the artifact '{}' to '{}'", artifact.name, format!("{}.{}",artifact.name,self._extension));
                                                         if let Err(e) = self._output_file.flush() {
-                                                            error!("Unable to flush stream, ERROR: {}", e);
+                                                            error!(
+                                                                "Unable to flush stream, ERROR: {}",
+                                                                e
+                                                            );
                                                         };
                                                     }
                                                     Err(e) => {
@@ -776,6 +781,10 @@ impl<'a> Fennec<'a> {
                                                         };
                                                         let mut csv_headers_printed = false;
                                                         for line in reader.lines() {
+                                                            if let Err(e) = &line {
+                                                                error!("A line in the file '{}' is not a string, ERROR: {}", entry.as_path().to_string_lossy(), e);
+                                                                continue;
+                                                            }
                                                             let line = &line.unwrap();
                                                             if let Some(groups) = re.captures(line)
                                                             {

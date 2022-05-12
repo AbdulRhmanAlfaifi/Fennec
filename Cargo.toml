@@ -1,6 +1,6 @@
 [package]
 name = "fennec"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 homepage = "https://github.com/AbdulRhmanAlfaifi/Fennec"
 repository = "https://github.com/AbdulRhmanAlfaifi/Fennec"
@@ -21,11 +21,11 @@ log = "0.4.14"
 glob = "0.3.0"
 regex = "1.5.4"
 chrono = "0.4.19"
-zip = "0.5.13"
+zip = "0.6.2"
 csv = "1.1.6"
 flate2 = "1.0.22"
 hostname = "0.3.1"
 clap = {version = "3.0.10", features = ["yaml"]}
 rust-embed = { version = "6.3.0", features = ["compression", "include-exclude"]}
-nix = "0.23.1"
+nix = "0.24.1"
 colored = "2.0.0"
