@@ -27,49 +27,72 @@ fennec is an artifact collection tool written in Rust to be used during incident
 
 ## Tests 🧪
 
-| OS Details             | Architecture | Success? | Details                       |
-| ---------------------- | ------------ | -------- | ----------------------------- |
-| Ubuntu 20.04.3 LTS     | x86_64       | ✅        |                               |
-| Ubuntu 19.04           | x86_64       | ✅        |                               |
-| Ubuntu 18.04.6 LTS     | x86_64       | ✅        |                               |
-| Ubuntu 17.04           | x86_64       | ✅        |                               |
-| Ubuntu 16.04.7 LTS     | x86_64       | ✅        |                               |
-| Ubuntu 15.10           | x86_64       | ✅        |                               |
-| Ubuntu 14.04.6 LTS     | x86_64       | ✅        |                               |
-| Ubuntu 13.04           | x86_64       | ✅        |                               |
-| Ubuntu 12.04.5 LTS     | x86_64       | ✅        |                               |
-| CentOS 8.4.2105        | x86_64       | ✅        |                               |
-| CentOS 7.9.2009        | x86_64       | ✅        |                               |
-| CentOS 6.10            | x86_64       | ✅        |                               |
-| CentOS 5.11            | x86_64       | ❌        | osquery requires libc >= 2.12 |
-| Ubuntu 20.04           | aarch64      | ✅        |                               |
-| MacOS Monterey v12.0.1 | x86_64       | ✅        |                               |
+| OS Details             | Architecture | Success? | Details                                                      |
+| ---------------------- | ------------ | -------- | ------------------------------------------------------------ |
+| Ubuntu 20.04.3 LTS     | x86_64       | ✅        |                                                              |
+| Ubuntu 19.04           | x86_64       | ✅        |                                                              |
+| Ubuntu 18.04.6 LTS     | x86_64       | ✅        |                                                              |
+| Ubuntu 17.04           | x86_64       | ✅        |                                                              |
+| Ubuntu 16.04.7 LTS     | x86_64       | ✅        |                                                              |
+| Ubuntu 15.10           | x86_64       | ✅        |                                                              |
+| Ubuntu 14.04.6 LTS     | x86_64       | ✅        |                                                              |
+| Ubuntu 13.04           | x86_64       | ✅        |                                                              |
+| Ubuntu 12.04.5 LTS     | x86_64       | ✅        |                                                              |
+| CentOS 8.4.2105        | x86_64       | ✅        |                                                              |
+| CentOS 7.9.2009        | x86_64       | ✅        |                                                              |
+| CentOS 6.10            | x86_64       | ✅        |                                                              |
+| CentOS 5.11            | x86_64       | ❌        | osquery requires libc >= 2.12                                |
+| Ubuntu 20.04           | aarch64      | ✅        |                                                              |
+| MacOS Monterey v12.0.1 | x86_64       | ✅        | configuration tuning is required. If you have experience in **MacOS** artifact feel free to contribute |
 
 ## Usage ✍
 
 ```verilog
-fennec 0.1.0
+fennec 0.3.0
 AbdulRhman Alfaifi <aalfaifi@u0041.co>
 Aritfact collection tool for *nix systems
 
 USAGE:
-    fennec_x86_64-unknown-linux-gnu [OPTIONS]
+    fennec [OPTIONS]
 
 OPTIONS:
-    -c, --config <FILE>             Sets a custom config file
-    -f, --log-file <FILE>           Sets the log file name [default: fennec.log]
-    -h, --help                      Print help information
-    -l, --log-level <LEVEL>         Sets the log level [default: info] [possible values: trace,
-                                    debug, info, error]
-    -o, --output <FILE>             Sets output file name [default: ABDULRHMAN-PC.zip]
-        --osquery-path <PATH>       Sets osquery path, if osquery is embedded it will be writen to
-                                    this path otherwise the path will be used to spawn osquery
-                                    instance [default: ./osqueryd]
-        --output-format <FORMAT>    Sets output format [default: jsonl] [possible values: jsonl,
-                                    csv, kjson]
-    -q, --quiet                     Do not print logs to stdout
-        --show-config               Show the embedded configuration file
-    -V, --version                   Print version information
+    -c, --config <FILE>
+            Sets a custom config file (Embedded : true)
+
+    -f, --log-file <FILE>
+            Sets the log file name [default: fennec.log]
+
+    -h, --help
+            Print help information
+
+    -l, --log-level <LEVEL>
+            Sets the log level [default: info] [possible values: trace, debug, info, error]
+
+    -o, --output <FILE>
+            Sets output file name [default: ABDULRHMAN-PC.zip]
+
+        --osquery-path <PATH>
+            Sets osquery path, if osquery is embedded it will be writen to this path otherwise the
+            path will be used to spawn osquery instance (Embedded : true) [default: ./osqueryd]
+
+        --output-format <FORMAT>
+            Sets output format [default: jsonl] [possible values: jsonl, csv, kjson]
+
+    -q, --quiet
+            Do not print logs to stdout
+
+        --show-config
+            Show the embedded configuration file
+
+        --show-embedded
+            Show the embedded files metadata
+
+    -u, --upload-artifact <CONFIG>...
+            Upload configuration string. Supported protocols: s3, aws3 and scp. Configuration
+            reference: 'https://github.com/AbdulRhmanAlfaifi/Fennec'
+
+    -V, --version
+            Print version information
 ```
 
 * `-c`, `--config` : Use the specified configuration file instead of the embedded configuration
@@ -86,6 +109,17 @@ OPTIONS:
   * kjson: Use this format if you want to upload the resulting file to [Kuiper](https://github.com/DFIRKuiper/Kuiper) analysis platform.
 * `-q`, `--quiet` : Do not print logs to `stdout`
 * `--show-config` : Print the embedded configuration then exit
+* `--show-embedded` : Show embedded files
+* `-u`, `--upload-artifact` : Upload artifact package to a remote server. Supported protocoles:
+  * `s3` : Upload artifact package to S3 bucket
+    * `Format` : s3://<ACCESS_KEY>:<SECRET_ACCESS_KEY>@(http|https)://<HOSTNAME>:<PORT>/<BUCKET_NAME>:<PATH>
+    * `Example`: s3://minioadmin:minioadmin@http://192.168.100.190:9000/fennec:/
+  * `aws3` : Upload artifact package to AWS S3 bucket
+    * `Format` : aws3://<ACCESS_KEY>:<SECRET_ACCESS_KEY>@<REGOIN>.<BUCKET_NAME>:<PATH>
+    * `Example`: aws3://AKIAXXXXXXXXXXXXXXXXX:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX@us-east-1.fennecbucket:/
+  * `scp` : Upload artifact package to a remote server using SCP protocol
+    * `Format` : scp://<USERNAME>:<PASSWORD>@<HOSTNAME>:<PORT>:<PATH>
+    * `Example`: scp://u0041:password@192.168.100.190:/fennec
 * `-V`, `--version` : Print `fennec` version then exit
 
 ## Compile with dependencies 👨‍💻

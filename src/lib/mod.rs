@@ -25,6 +25,9 @@ use modifiers::Modifier;
 
 use osquery_rs::OSQuery;
 use serde::{Deserialize, Serialize};
+
+pub mod upload;
+
 #[derive(Debug, Serialize, Deserialize)]
 /// Contains the configuration for the all artifacts
 pub struct FennecConfig {
@@ -181,8 +184,7 @@ impl<'a> Fennec<'a> {
             }
         };
 
-        let foptions = FileOptions::default();
-        foptions.compression_method(CompressionMethod::Deflated);
+        let foptions = FileOptions::default().compression_method(CompressionMethod::Deflated);
 
         Ok(Self {
             _config: config,

@@ -1,5 +1,6 @@
 use clap::{App, Arg};
 use colored::*;
+use fennec::upload::UploadArtifacts;
 use fennec::{Fennec, OutputFormat};
 use log::*;
 use log4rs::{
@@ -84,7 +85,7 @@ fn init_logger(log_path: &str, level: log::LevelFilter, quiet: bool) -> log4rs::
 }
 
 macro_rules! init_args {
-    ($default_output_name:expr,$default_log_path:expr, $osquery_embedded:expr) => {
+    ($default_output_name:expr,$default_log_path:expr, $osquery_embedded:expr, $config_embedded:expr) => {
         App::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))
         .author("AbdulRhman Alfaifi <aalfaifi@u0041.co>")
@@ -94,7 +95,7 @@ macro_rules! init_args {
                 .short('c')
                 .long("config")
                 .value_name("FILE")
-                .help("Sets a custom config file")
+                .help(format!("Sets a custom config file (Embedded : {})", $config_embedded).as_ref())
                 .takes_value(true),
         )
         .arg(
@@ -153,6 +154,15 @@ macro_rules! init_args {
                 .default_value("./osqueryd"),
         )
         .arg(
+            Arg::new("upload_artifact")
+                .short('u')
+                .long("upload-artifact")
+                .value_name("CONFIG")
+                .help(format!("Upload configuration string. Supported protocols: s3, aws3 and scp. Configuration reference: '{}'", env!("CARGO_PKG_HOMEPAGE")).as_ref())
+                .takes_value(true)
+                .multiple_values(true)
+        )
+        .arg(
             Arg::new("quiet")
                 .short('q')
                 .long("quiet")
@@ -179,7 +189,20 @@ fn main() {
         None => String::new(),
     };
 
+    let config_asset_name = match Asset::iter()
+        .into_iter()
+        .find(|asset_name| asset_name.contains("config.yaml"))
+    {
+        Some(asset_name) => asset_name.to_string().clone(),
+        None => String::new(),
+    };
+
     let osquery_embedded = match Asset::get(&osquery_asset_name) {
+        Some(_) => true,
+        None => false,
+    };
+
+    let config_embedded = match Asset::get(&config_asset_name) {
         Some(_) => true,
         None => false,
     };
@@ -197,8 +220,13 @@ fn main() {
 
     let default_log_path = format!("{}.log", env!("CARGO_PKG_NAME"));
 
-    let cli_matches =
-        init_args!(&default_output_name, &default_log_path, osquery_embedded).get_matches();
+    let cli_matches = init_args!(
+        &default_output_name,
+        &default_log_path,
+        osquery_embedded,
+        config_embedded
+    )
+    .get_matches();
 
     let embedded_config = match Asset::get("config.yaml") {
         Some(embedded_config) => Some(embedded_config.data),
@@ -214,20 +242,35 @@ fn main() {
                 Some(mut conf_args) => {
                     let mut args = vec![String::from("")];
                     args.append(&mut conf_args);
-                    init_args!(&default_output_name, &default_log_path, osquery_embedded)
-                        .get_matches_from(args)
+                    init_args!(
+                        &default_output_name,
+                        &default_log_path,
+                        osquery_embedded,
+                        config_embedded
+                    )
+                    .get_matches_from(args)
                 }
                 None => {
                     let empty: Vec<String> = vec![];
-                    init_args!(&default_output_name, &default_log_path, osquery_embedded)
-                        .get_matches_from(empty)
+                    init_args!(
+                        &default_output_name,
+                        &default_log_path,
+                        osquery_embedded,
+                        config_embedded
+                    )
+                    .get_matches_from(empty)
                 }
             }
         }
         None => {
             let empty: Vec<String> = vec![];
-            init_args!(&default_output_name, &default_log_path, osquery_embedded)
-                .get_matches_from(empty)
+            init_args!(
+                &default_output_name,
+                &default_log_path,
+                osquery_embedded,
+                config_embedded
+            )
+            .get_matches_from(empty)
         }
     };
 
@@ -259,6 +302,11 @@ fn main() {
             "error" => log::LevelFilter::Error,
             _ => log::LevelFilter::Info,
         }
+    };
+
+    let upload = match cli_matches.occurrences_of("upload_artifact") {
+        0 => conf_matches.values_of("upload_artifact"),
+        _ => cli_matches.values_of("upload_artifact"),
     };
 
     init_logger(log_path, log_level, quiet);
@@ -421,8 +469,7 @@ fn main() {
         }
     };
 
-    let foptions = FileOptions::default();
-    foptions.compression_method(CompressionMethod::Deflated);
+    let foptions = FileOptions::default().compression_method(CompressionMethod::Deflated);
 
     let mut osquery_ir = Fennec::from_reader(config, &mut zipfile)
         .unwrap()
@@ -442,9 +489,6 @@ fn main() {
                 log_path, output
             );
 
-            let foptions = FileOptions::default();
-            foptions.compression_method(CompressionMethod::Deflated);
-
             match zipfile.start_file(log_path, foptions) {
                 Ok(_) => match File::open(log_path) {
                     Ok(in_file) => {
@@ -459,6 +503,8 @@ fn main() {
 
                             reader.consume(bytes);
                         }
+                        zipfile.flush().unwrap();
+                        zipfile.finish().unwrap();
                     }
                     Err(e) => {
                         error!("Unable to open the log file '{}', ERROR: '{}'", log_path, e);
@@ -473,6 +519,30 @@ fn main() {
             error!("Unable to collect triage image, ERROR: '{}'", e.message);
         }
     };
+
+    match upload {
+        Some(config) => {
+            for value in config {
+                match UploadArtifacts::new(value) {
+                    Ok(upload_artifact) => match upload_artifact.upload(output) {
+                        Ok(_) => {
+                            info!("Successfully uploaded the artifact package '{}'", output)
+                        }
+                        Err(e) => {
+                            error!(
+                                "Unable to upload the artifact package '{}', ERROR: {:?}",
+                                output, e
+                            );
+                        }
+                    },
+                    Err(e) => {
+                        error!("Error paring upload configuration, ERROR: {:?}", e)
+                    }
+                }
+            }
+        }
+        None => {}
+    }
 
     //TODO: Run cleanup
 
@@ -491,6 +561,4 @@ fn main() {
     }
 
     info!("Done!");
-
-    // println!("{:?}", b);
 }

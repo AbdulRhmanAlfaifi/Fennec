@@ -1,3 +1,5 @@
+# Fennec v0.3.0
+* Added capability to upload artifact package to remote server. Supported protocols are s3, aws3 and scp
 # Fennec v0.2.2
 * Fixes issue #6
 * Pump up dependencies
