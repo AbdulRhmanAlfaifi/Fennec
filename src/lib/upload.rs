@@ -1,21 +1,18 @@
+use crate::errors::FennecError;
 use core::result::Result;
 use log::*;
 use regex::Regex;
-use remotefs::RemoteFs;
-use remotefs_aws_s3::AwsS3Fs;
-use remotefs_ssh::{ScpFs, SshOpts};
+use s3::{creds::Credentials, Bucket, Region};
 use std::fmt::Debug;
 use std::fs::File;
 use std::path::Path;
-
-use crate::errors::FennecError;
+use std::str::FromStr;
 
 /// Fennec supported proctocols to uploaded artifact packages
 #[derive(Debug)]
 pub enum UploadSupportedProtocols {
     S3(S3Config),
     AWS3(AWS3Config),
-    SCP(SCPConfig),
 }
 
 /// Configuration for S3 bucket. This struct used to save self hosted S3 server (tested on MinIO) configurations.
@@ -56,24 +53,6 @@ impl Debug for AWS3Config {
     }
 }
 
-/// Configuration for remote server SSH service.
-pub struct SCPConfig {
-    username: String,
-    password: String,
-    hostname: String,
-    port: u16,
-    path: String,
-}
-
-impl Debug for SCPConfig {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&format!(
-            "endpoint: '{}@{}:{}', path: '{}'",
-            &self.username, &self.hostname, &self.port, &self.path
-        ))
-    }
-}
-
 /// This struct is responsable to parse upload configuration string & upload the artifact package to the remote server.
 #[derive(Debug)]
 pub struct UploadArtifacts {
@@ -88,11 +67,8 @@ impl UploadArtifacts {
     /// * `aws3` : Upload artifact package to AWS S3 bucket
     ///     * `Format` : aws3://`<ACCESS_KEY>`:`<SECRET_ACCESS_KEY>`@`<REGOIN>`.`<BUCKET_NAME>`:`<PATH>`
     ///     * `Example`: aws3://AKIAXXXXXXXXXXXXXXXXX:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX@us-east-1.fennecbucket:/
-    /// * `scp` : Upload artifact package to a remote server using SCP protocol
-    ///     * `Format` : scp://`<USERNAME>`:`<PASSWORD>`@`<HOSTNAME>`:`<PORT>`:`<PATH>`
-    ///     * `Example`: scp://u0041:password@192.168.100.190:/fennec
     pub fn new(config: &str) -> Result<Self, FennecError> {
-        let protocol = Regex::new("(?P<protocol>(aws3|s3|scp))")
+        let protocol = Regex::new("(?P<protocol>(aws3|s3))")
             .unwrap()
             .captures(config)
             .unwrap()
@@ -109,10 +85,6 @@ impl UploadArtifacts {
             }
             "aws3" => {
                 let regex = "(?P<protocol>aws3)://(\")?(?P<access_key>[^\":]+)(\")?:(\")?(?P<secret_access_key>[^\":]+)(\")?@(?P<regoin>[a-zA-Z0-9\\-]+)\\.(?P<bucket_name>[a-zA-Z0-9\\-]+):(?P<path>[a-zA-Z0-9\\.\\-_/]+)";
-                Regex::new(regex).unwrap()
-            }
-            "scp" => {
-                let regex = "(?P<protocol>scp)://(\")?(?P<username>[^\":]+)(\")?:(\")?(?P<password>[^\":]+)(\")?@(?P<hostname>[a-zA-Z0-9\\-\\.]+)(:)?(?P<port>[0-9]+)?:(?P<path>[a-zA-Z0-9\\.\\-_/~]+)";
                 Regex::new(regex).unwrap()
             }
             _ => Regex::new("(?P<protocol>[^:])").unwrap(),
@@ -185,33 +157,8 @@ impl UploadArtifacts {
 
                         return Ok(UploadArtifacts { config });
                     }
-                    "scp" => {
-                        let username = captures.name("username").unwrap().as_str().to_string();
-                        let password = captures.name("password").unwrap().as_str().to_string();
-                        let hostname = captures.name("hostname").unwrap().as_str().to_string();
-
-                        let path = captures.name("path").unwrap().as_str().to_string();
-                        let port = match captures.name("port") {
-                            Some(port) => port.as_str().to_string().parse::<u16>().unwrap(),
-                            None => 22,
-                        };
-                        let config = UploadSupportedProtocols::SCP(SCPConfig {
-                            username,
-                            password,
-                            hostname,
-                            port,
-                            path,
-                        });
-
-                        info!(
-                            "Using the configuration '{:?}' to upload the artifacts",
-                            config
-                        );
-
-                        return Ok(UploadArtifacts { config });
-                    }
                     _ => {
-                        return Err(FennecError::upload_config_error("protocol not supported in upload artifacts. Supported protocol are s3, aws3 and scp.".to_string()));
+                        return Err(FennecError::upload_config_error("protocol not supported in upload artifacts. Supported protocol are s3 and aws3.".to_string()));
                     }
                 },
                 None => {
@@ -232,210 +179,157 @@ impl UploadArtifacts {
     pub fn upload(&self, path: impl AsRef<Path>) -> Result<bool, FennecError> {
         match &self.config {
             UploadSupportedProtocols::S3(config) => {
-                let mut client = AwsS3Fs::new(&config.bucket_name)
-                    .access_key(&config.access_key)
-                    .secret_access_key(&config.secret_access_key)
-                    .endpoint(format!(
-                        "{}://{}:{}",
-                        &config.protocol, &config.hostname, &config.port
-                    ))
-                    .new_path_style(true);
-
-                if let Err(e) = client.connect() {
-                    return Err(FennecError::upload_error(format!(
-                        "Unable to connect to the endpoints '{}://{}:{}', ERROR: {}",
-                        config.protocol, config.hostname, config.port, e
-                    )));
-                }
-
-                let mut file = match File::open(&path) {
-                    Ok(file) => file,
-                    Err(e) => {
-                        return Err(FennecError::upload_error(format!(
-                            "Unable to open the file '{}', ERROR: {}",
-                            path.as_ref().to_str().unwrap(),
-                            e
-                        )));
-                    }
+                let creds = Credentials::new(
+                    Some(&config.access_key),
+                    Some(&config.secret_access_key),
+                    None,
+                    None,
+                    None,
+                )
+                .unwrap();
+                let regoin = Region::Custom {
+                    region: String::new(),
+                    endpoint: format!("{}://{}:{}", config.protocol, config.hostname, config.port),
                 };
 
-                info!(
-                    "Uploading artifact package '{}' to the bucket '{}' with the path '{}'",
-                    path.as_ref().to_str().unwrap(),
-                    config.bucket_name,
-                    config.path
-                );
+                match Bucket::new(&config.bucket_name, regoin, creds) {
+                    Ok(mut bucket) => {
+                        bucket.set_path_style();
 
-                match client.bucket().unwrap().put_object_stream(
-                    &mut file,
-                    format!(
-                        "{}{}",
-                        &config.path,
-                        &path.as_ref().file_name().unwrap().to_str().unwrap()
-                    ),
-                ) {
-                    Ok(status_code) => {
-                        if status_code == 200 {
-                            if let Err(e) = client.disconnect() {
+                        let mut file = match File::open(&path) {
+                            Ok(file) => file,
+                            Err(e) => {
                                 return Err(FennecError::upload_error(format!(
-                                    "Unable to disconnect from the endpoints '{}://{}:{}', ERROR: {}",
-                                    config.protocol, config.hostname, config.port, e
+                                    "Unable to open the file '{}', ERROR: {}",
+                                    path.as_ref().to_str().unwrap(),
+                                    e
                                 )));
                             }
-                            return Ok(true);
-                        } else {
-                            return Err(FennecError::upload_error(format!(
-                                    "Unable to upload the object '{}' to the bucket '{}', ERROR: status code '{}'",
-                                    &path.as_ref().file_name().unwrap().to_str().unwrap(),
-                                    config.bucket_name,
-                                    status_code
-                                )));
-                        }
-                    }
-                    Err(e) => {
-                        return Err(FennecError::upload_error(format!(
-                            "Unable to upload the object '{}' to the bucket '{}', ERROR: {}",
-                            &path.as_ref().file_name().unwrap().to_str().unwrap(),
+                        };
+
+                        info!(
+                            "Uploading artifact package '{}' to the bucket '{}' with the path '{}'",
+                            path.as_ref().to_str().unwrap(),
                             config.bucket_name,
-                            e
-                        )));
-                    }
-                }
-            }
-            UploadSupportedProtocols::AWS3(config) => {
-                let mut client = AwsS3Fs::new(&config.bucket_name)
-                    .access_key(&config.access_key)
-                    .secret_access_key(&config.secret_access_key)
-                    .region(&config.regoin)
-                    .profile("default");
+                            config.path
+                        );
 
-                if let Err(e) = client.connect() {
-                    return Err(FennecError::upload_error(format!(
-                        "Unable to connect to AWS S3 bucket '{}', ERROR: {}",
-                        config.bucket_name, e
-                    )));
-                }
-
-                let mut file = match File::open(&path) {
-                    Ok(file) => file,
-                    Err(e) => {
-                        return Err(FennecError::upload_error(format!(
-                            "Unable to open the file '{}', ERROR: {}",
-                            path.as_ref().to_str().unwrap(),
-                            e
-                        )));
-                    }
-                };
-
-                info!(
-                    "Uploading artifact package '{}' to the bucket '{}' with the path '{}'",
-                    path.as_ref().to_str().unwrap(),
-                    config.bucket_name,
-                    config.path
-                );
-
-                match client.bucket().unwrap().put_object_stream(
-                    &mut file,
-                    format!(
-                        "{}{}",
-                        &config.path,
-                        &path.as_ref().file_name().unwrap().to_str().unwrap()
-                    ),
-                ) {
-                    Ok(status_code) => {
-                        if status_code == 200 {
-                            if let Err(e) = client.disconnect() {
-                                return Err(FennecError::upload_error(format!(
-                                    "Unable to connect to AWS S3 bucket '{}', ERROR: {}",
-                                    config.bucket_name, e
-                                )));
-                            }
-                            return Ok(true);
-                        } else {
-                            return Err(FennecError::upload_error(format!(
+                        match bucket.put_object_stream(
+                            &mut file,
+                            format!(
+                                "{}{}",
+                                &config.path,
+                                &path.as_ref().file_name().unwrap().to_str().unwrap()
+                            ),
+                        ) {
+                            Ok(status_code) => {
+                                if status_code == 200 {
+                                    return Ok(true);
+                                } else {
+                                    return Err(FennecError::upload_error(format!(
                                         "Unable to upload the object '{}' to the bucket '{}', ERROR: status code '{}'",
                                         &path.as_ref().file_name().unwrap().to_str().unwrap(),
                                         config.bucket_name,
                                         status_code
                                     )));
+                                }
+                            }
+                            Err(e) => {
+                                return Err(FennecError::upload_error(format!(
+                                    "Unable to upload the object '{}' to the bucket '{}', ERROR: {}",
+                                    &path.as_ref().file_name().unwrap().to_str().unwrap(),
+                                    config.bucket_name,
+                                    e
+                                )));
+                            }
                         }
                     }
                     Err(e) => {
                         return Err(FennecError::upload_error(format!(
-                            "Unable to upload the object '{}' to the bucket '{}', ERROR: {}",
-                            &path.as_ref().file_name().unwrap().to_str().unwrap(),
-                            config.bucket_name,
-                            e
+                            "Unable to connect to the endpoints '{}://{}:{}', ERROR: {}",
+                            config.protocol, config.hostname, config.port, e
                         )));
                     }
                 }
             }
-            UploadSupportedProtocols::SCP(config) => {
-                let options = SshOpts::new(&config.hostname)
-                    .username(&config.username)
-                    .password(&config.password)
-                    .port(config.port);
-
-                let mut client = ScpFs::new(options);
-
-                if let Err(e) = client.connect() {
-                    return Err(FennecError::upload_error(format!(
-                        "Unable to connect to '{}@{}:{}', ERROR: {}",
-                        config.username, config.hostname, config.port, e
-                    )));
-                }
-
-                let file = match File::open(&path) {
-                    Ok(file) => file,
+            UploadSupportedProtocols::AWS3(config) => {
+                let creds = Credentials::new(
+                    Some(&config.access_key),
+                    Some(&config.secret_access_key),
+                    None,
+                    None,
+                    None,
+                )
+                .unwrap();
+                let regoin = match Region::from_str(&config.regoin) {
+                    Ok(r) => r,
                     Err(e) => {
-                        return Err(FennecError::upload_error(format!(
-                            "Unable to open the file '{}', ERROR: {}",
-                            path.as_ref().to_str().unwrap(),
+                        return Err(FennecError::upload_config_error(format!(
+                            "Region is invalid, ERROR: {}",
                             e
                         )));
                     }
                 };
 
-                let metadata =
-                    remotefs::fs::Metadata::default().size(file.metadata().unwrap().len());
+                match Bucket::new(&config.bucket_name, regoin, creds) {
+                    Ok(bucket) => {
+                        let mut file = match File::open(&path) {
+                            Ok(file) => file,
+                            Err(e) => {
+                                return Err(FennecError::upload_error(format!(
+                                    "Unable to open the file '{}', ERROR: {}",
+                                    path.as_ref().to_str().unwrap(),
+                                    e
+                                )));
+                            }
+                        };
 
-                let remote_path = Path::new(&config.path);
+                        info!(
+                            "Uploading artifact package '{}' to the bucket '{}' with the path '{}'",
+                            path.as_ref().to_str().unwrap(),
+                            config.bucket_name,
+                            config.path
+                        );
 
-                if let Err(e) = client.change_dir(remote_path) {
-                    return Err(FennecError::upload_error(format!(
-                        "Unable to change directory to '{}', ERROR: {}",
-                        remote_path.to_str().unwrap(),
-                        e
-                    )));
+                        match bucket.put_object_stream(
+                            &mut file,
+                            format!(
+                                "{}{}",
+                                &config.path,
+                                &path.as_ref().file_name().unwrap().to_str().unwrap()
+                            ),
+                        ) {
+                            Ok(status_code) => {
+                                if status_code == 200 {
+                                    return Ok(true);
+                                } else {
+                                    return Err(FennecError::upload_error(format!(
+                                        "Unable to upload the object '{}' to the bucket '{}', ERROR: status code '{}'",
+                                        &path.as_ref().file_name().unwrap().to_str().unwrap(),
+                                        config.bucket_name,
+                                        status_code
+                                    )));
+                                }
+                            }
+                            Err(e) => {
+                                return Err(FennecError::upload_error(format!(
+                                    "Unable to upload the object '{}' to the bucket '{}', ERROR: {}",
+                                    &path.as_ref().file_name().unwrap().to_str().unwrap(),
+                                    config.bucket_name,
+                                    e
+                                )));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        return Err(FennecError::upload_error(
+                            format!(
+                                "Unable to connect to the AWS bucket '{}' in the regoin '{}', ERROR: {}",
+                                config.bucket_name, config.regoin, e
+                            ),
+                        ));
+                    }
                 }
-
-                info!(
-                    "Uploading artifact package '{}' to '{}'",
-                    path.as_ref().to_str().unwrap(),
-                    config.path
-                );
-
-                let transfer_size = client
-                    .create_file(
-                        path.as_ref()
-                            .file_name()
-                            .unwrap()
-                            .to_str()
-                            .unwrap()
-                            .as_ref(),
-                        &metadata,
-                        Box::new(file),
-                    )
-                    .unwrap();
-
-                info!(
-                    "Successfully uploaded artifact package '{}' to '{}' with the file size '{}'",
-                    path.as_ref().to_str().unwrap(),
-                    config.path,
-                    transfer_size
-                );
-
-                Ok(true)
             }
         }
     }

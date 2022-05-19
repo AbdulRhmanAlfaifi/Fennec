@@ -158,7 +158,7 @@ macro_rules! init_args {
                 .short('u')
                 .long("upload-artifact")
                 .value_name("CONFIG")
-                .help(format!("Upload configuration string. Supported protocols: s3, aws3 and scp. Configuration reference: '{}'", env!("CARGO_PKG_HOMEPAGE")).as_ref())
+                .help(format!("Upload configuration string. Supported protocols: s3 and aws3. Configuration reference: '{}'", env!("CARGO_PKG_HOMEPAGE")).as_ref())
                 .takes_value(true)
                 .multiple_values(true)
         )
