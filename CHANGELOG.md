@@ -1,3 +1,7 @@
+# Fennec v0.3.2
+* Added aarch64 build to CI workflow
+* Miner modifications
+* Dependencies pump up
 # Fennec v0.3.1
 * Reimplement S3 artifact package upload code to fix static compilation issue
 * Remove SCP artifact package upload implementation to fix static compilation issue

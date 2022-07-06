@@ -1,15 +1,17 @@
 name: Build & Test
-on: 
+on:
   push:
     paths-ignore:
-    - '.github/**'
-    - 'screenshots/**'
-    - 'README.md'
+      - ".github/**"
+      - "screenshots/**"
+      - "README.md"
+    tags-ignore:
+      - v*
   pull_request:
     paths-ignore:
-    - '.github/**'
-    - 'screenshots/**'
-    - 'README.md'
+      - ".github/**"
+      - "screenshots/**"
+      - "README.md"
 jobs:
   build_linux:
     runs-on: ubuntu-latest

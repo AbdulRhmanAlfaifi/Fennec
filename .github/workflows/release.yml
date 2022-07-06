@@ -1,12 +1,12 @@
-on: 
+on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 name: Build All Supported Targets and Create New Release
 
 jobs:
-  build_linux:
+  build_linux_x86_64:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository code
@@ -29,8 +29,32 @@ jobs:
       - name: Upload fennec linux binary as artifact
         uses: actions/upload-artifact@v1
         with:
-          name: fennec_x86_64-unknown-linux-gnu
+          name: fennec_linux_x86_64
           path: ./target/x86_64-unknown-linux-gnu/release/fennec
+  build_linux_aarch64:
+    runs-on: self-hosted
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v2
+      - name: Download and install rust latest version
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      - name: Build Fennec for the target aarch64-unknown-linux-gnu as static binary
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH";RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --target aarch64-unknown-linux-gnu
+      # - name: Compress executable using upx
+      #   run: |
+      #     ls -lah ./target/aarch64-unknown-linux-gnu/release/fennec
+      #     upx ./target/aarch64-unknown-linux-gnu/release/fennec
+      #     ls -lah ./target/aarch64-unknown-linux-gnu/release/fennec
+      - name: Check if Fennec build successfuly
+        run: |
+          ./target/aarch64-unknown-linux-gnu/release/fennec -h
+      - name: Upload fennec linux binary as artifact
+        uses: actions/upload-artifact@v1
+        with:
+          name: fennec_linux_aarch64
+          path: ./target/aarch64-unknown-linux-gnu/release/fennec
 
   build_darwin:
     runs-on: macos-latest
@@ -56,47 +80,60 @@ jobs:
       - name: Upload fennec darwin binary as artifact
         uses: actions/upload-artifact@v1
         with:
-          name: fennec_x86_64-apple-darwin
+          name: fennec_darwin_x86_64
           path: ./target/x86_64-apple-darwin/release/fennec
-    
+
   create_release:
     runs-on: ubuntu-latest
-    needs: [build_linux, build_darwin]
+    needs: [build_linux_x86_64, build_linux_aarch64, build_darwin]
     steps:
-    - name: Download fennec linux binary from artifacts
-      uses: actions/download-artifact@v1
-      with:
-        name: fennec_x86_64-unknown-linux-gnu
-    - name: Download fennec darwin binary from artifacts
-      uses: actions/download-artifact@v1
-      with:
-        name: fennec_x86_64-apple-darwin
-    - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ github.ref }}
-        release_name: Fennec ${{ github.ref }}
-        body: ${{ github.event.head_commit.message }}
-        draft: false
-        prerelease: false
-    - name: Upload Darwin Release Asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
-        asset_path: fennec_x86_64-apple-darwin/fennec
-        asset_name: fennec_x86_64-apple-darwin
-        asset_content_type: application/x-mach-binary
-    - name: Upload Linux Release Asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
-        asset_path: fennec_x86_64-unknown-linux-gnu/fennec
-        asset_name: fennec_x86_64-unknown-linux-gnu
-        asset_content_type: application/x-mach-binary
+      - name: Download fennec linux (x86_64) binary from artifacts
+        uses: actions/download-artifact@v1
+        with:
+          name: fennec_linux_x86_64
+      - name: Download fennec linux (aarch64) binary from artifacts
+        uses: actions/download-artifact@v1
+        with:
+          name: fennec_linux_aarch64
+      - name: Download fennec darwin binary from artifacts
+        uses: actions/download-artifact@v1
+        with:
+          name: fennec_darwin_x86_64
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Fennec ${{ github.ref }}
+          body: ${{ github.event.head_commit.message }}
+          draft: false
+          prerelease: false
+      - name: Upload Darwin Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
+          asset_path: fennec_darwin_x86_64/fennec
+          asset_name: fennec_darwin_x86_64
+          asset_content_type: application/x-mach-binary
+      - name: Upload Linux (x86_64) Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
+          asset_path: fennec_linux_x86_64/fennec
+          asset_name: fennec_linux_x86_64
+          asset_content_type: application/x-elf
+      - name: Upload Linux (aarch64) Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
+          asset_path: fennec_linux_aarch64/fennec
+          asset_name: fennec_linux_aarch64
+          asset_content_type: application/x-elf

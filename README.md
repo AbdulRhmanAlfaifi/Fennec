@@ -115,11 +115,8 @@ OPTIONS:
     * `Format` : s3://<ACCESS_KEY>:<SECRET_ACCESS_KEY>@(http|https)://<HOSTNAME>:<PORT>/<BUCKET_NAME>:<PATH>
     * `Example`: s3://minioadmin:minioadmin@http://192.168.100.190:9000/fennec:/
   * `aws3` : Upload artifact package to AWS S3 bucket
-    * `Format` : aws3://<ACCESS_KEY>:<SECRET_ACCESS_KEY>@<REGOIN>.<BUCKET_NAME>:<PATH>
+    * `Format` : aws3://<ACCESS_KEY>:<SECRET_ACCESS_KEY>@<AWS_REGOIN>.<BUCKET_NAME>:<PATH>
     * `Example`: aws3://AKIAXXXXXXXXXXXXXXXXX:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX@us-east-1.fennecbucket:/
-  * `scp` : Upload artifact package to a remote server using SCP protocol
-    * `Format` : scp://<USERNAME>:<PASSWORD>@<HOSTNAME>:<PORT>:<PATH>
-    * `Example`: scp://u0041:password@192.168.100.190:/fennec
 * `-V`, `--version` : Print `fennec` version then exit
 
 ## Compile with dependencies 👨‍💻

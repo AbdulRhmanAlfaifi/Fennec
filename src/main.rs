@@ -158,7 +158,14 @@ macro_rules! init_args {
                 .short('u')
                 .long("upload-artifact")
                 .value_name("CONFIG")
-                .help(format!("Upload configuration string. Supported protocols: s3 and aws3. Configuration reference: '{}'", env!("CARGO_PKG_HOMEPAGE")).as_ref())
+                .help(r#"Upload configuration string. Supported protocols: s3 and aws3. Supported Protocols: 
+* s3 : Upload artifact package to S3 bucket (ex. minio)
+    * Format : s3://<ACCESS_KEY>:<SECRET_ACCESS_KEY>@(http|https)://<HOSTNAME>:<PORT>/<BUCKET_NAME>:<PATH>
+    * Example (minio): s3://minioadmin:minioadmin@http://192.168.100.190:9000/fennec:/
+* aws3 : Upload artifact package to AWS S3 bucket
+    * Format : aws3://<ACCESS_KEY>:<SECRET_ACCESS_KEY>@<AWS_REGOIN>.<BUCKET_NAME>:<PATH>
+    * Example: aws3://AKIAXXX:XXX@us-east-1.fennecbucket:/
+                "#)
                 .takes_value(true)
                 .multiple_values(true)
         )

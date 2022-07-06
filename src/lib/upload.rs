@@ -71,9 +71,13 @@ impl UploadArtifacts {
         let protocol = Regex::new("(?P<protocol>(aws3|s3))")
             .unwrap()
             .captures(config)
-            .unwrap()
+            .ok_or(FennecError::upload_config_error(
+                "The protocol specified for artifact upload is not supported".to_string(),
+            ))?
             .name("protocol")
-            .unwrap()
+            .ok_or(FennecError::upload_config_error(
+                "The protocol specified for artifact upload is not supported".to_string(),
+            ))?
             .as_str();
 
         info!("Using '{}' protocol to upload the artifacts", protocol);
@@ -87,7 +91,11 @@ impl UploadArtifacts {
                 let regex = "(?P<protocol>aws3)://(\")?(?P<access_key>[^\":]+)(\")?:(\")?(?P<secret_access_key>[^\":]+)(\")?@(?P<regoin>[a-zA-Z0-9\\-]+)\\.(?P<bucket_name>[a-zA-Z0-9\\-]+):(?P<path>[a-zA-Z0-9\\.\\-_/]+)";
                 Regex::new(regex).unwrap()
             }
-            _ => Regex::new("(?P<protocol>[^:])").unwrap(),
+            _ => {
+                return Err(FennecError::upload_config_error(
+                    "The protocol specified for artifact upload is not supported".to_string(),
+                ))
+            }
         };
 
         match re.captures(config) {
