@@ -267,8 +267,8 @@ impl<'a> Fennec<'a> {
     }
 
     /// Allows setting `FileOptions` of the ZipWriter at runtime.
-    pub fn set_options(mut self, foptions: FileOptions) -> Self {
-        self._foptions = foptions;
+    pub fn set_options(mut self, foptions: &FileOptions) -> Self {
+        self._foptions = foptions.clone();
         self
     }
 

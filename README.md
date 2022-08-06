@@ -117,6 +117,9 @@ OPTIONS:
   * `aws3` : Upload artifact package to AWS S3 bucket
     * `Format` : aws3://<ACCESS_KEY>:<SECRET_ACCESS_KEY>@<AWS_REGOIN>.<BUCKET_NAME>:<PATH>
     * `Example`: aws3://AKIAXXXXXXXXXXXXXXXXX:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX@us-east-1.fennecbucket:/
+  * `scp` : Upload artifact package to a server using SCP protocol
+      * `Format` : scp://`<USERNAME>`:`<PASSWORD>`@`<HOSTNAME>`:`<PORT>`:`<PATH>`
+      * `Example`: scp://testusername:testpassword@192.168.100.190:22:/dev/shm
 * `-V`, `--version` : Print `fennec` version then exit
 
 ## Compile with dependencies 👨‍💻

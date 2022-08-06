@@ -80,6 +80,7 @@ fn init_logger(log_path: &str, level: log::LevelFilter, quiet: bool) -> log4rs::
     if !quiet {
         root_builder = root_builder.appender("stderr");
     }
+
     let config = config_builder.build(root_builder.build(level)).unwrap();
     log4rs::init_config(config).unwrap()
 }
@@ -165,6 +166,9 @@ macro_rules! init_args {
 * aws3 : Upload artifact package to AWS S3 bucket
     * Format : aws3://<ACCESS_KEY>:<SECRET_ACCESS_KEY>@<AWS_REGOIN>.<BUCKET_NAME>:<PATH>
     * Example: aws3://AKIAXXX:XXX@us-east-1.fennecbucket:/
+* scp : Upload artifact package to a server using SCP protocol
+    * Format : scp://<USERNAME>:<PASSWORD>@<HOSTNAME>:<PORT>:<PATH>
+    * Example: scp://testusername:testpassword@192.168.100.190:22:/dev/shm
                 "#)
                 .takes_value(true)
                 .multiple_values(true)
@@ -462,7 +466,7 @@ fn main() {
         }
         None => {
             warn!(
-                "No osquery embedded, using osuqery binary at '{}'",
+                "No osquery embedded, using osquery binary at '{}'",
                 osquery_path
             )
         }
@@ -476,14 +480,17 @@ fn main() {
         }
     };
 
-    let foptions = FileOptions::default().compression_method(CompressionMethod::Deflated);
+    let foptions = FileOptions::default()
+        .large_file(true)
+        .compression_method(CompressionMethod::Deflated);
 
-    let mut osquery_ir = Fennec::from_reader(config, &mut zipfile)
+    let mut fennec = Fennec::from_reader(config, &mut zipfile)
         .unwrap()
         .set_output_format(output_format)
-        .set_osquery_binary_path(osquery_path);
-    // println!("{:?}", a);
-    match osquery_ir.triage() {
+        .set_osquery_binary_path(osquery_path)
+        .set_options(&foptions);
+
+    match fennec.triage() {
         Ok(_) => {
             let duration = time_took.elapsed();
             info!(
@@ -550,8 +557,6 @@ fn main() {
         }
         None => {}
     }
-
-    //TODO: Run cleanup
 
     for path in to_cleanup {
         match fs::remove_file(&path) {

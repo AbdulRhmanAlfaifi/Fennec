@@ -3,16 +3,36 @@ use core::result::Result;
 use log::*;
 use regex::Regex;
 use s3::{creds::Credentials, Bucket, Region};
+use ssh_rs::ssh;
 use std::fmt::Debug;
 use std::fs::File;
 use std::path::Path;
 use std::str::FromStr;
+
+/// Configuration for SCP protocol. This struct used to save connection parameters to upload artifact packages to servers supporting SCP protocol.
+pub struct ScpConfig {
+    username: String,
+    password: String,
+    hostname: String,
+    port: u16,
+    path: String,
+}
+
+impl Debug for ScpConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&format!(
+            "hostname: '{}', port: {}, username: '{}', path: '{}'",
+            &self.hostname, &self.port, &self.username, &self.path
+        ))
+    }
+}
 
 /// Fennec supported proctocols to uploaded artifact packages
 #[derive(Debug)]
 pub enum UploadSupportedProtocols {
     S3(S3Config),
     AWS3(AWS3Config),
+    SCP(ScpConfig),
 }
 
 /// Configuration for S3 bucket. This struct used to save self hosted S3 server (tested on MinIO) configurations.
@@ -67,8 +87,11 @@ impl UploadArtifacts {
     /// * `aws3` : Upload artifact package to AWS S3 bucket
     ///     * `Format` : aws3://`<ACCESS_KEY>`:`<SECRET_ACCESS_KEY>`@`<REGOIN>`.`<BUCKET_NAME>`:`<PATH>`
     ///     * `Example`: aws3://AKIAXXXXXXXXXXXXXXXXX:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX@us-east-1.fennecbucket:/
+    /// * `scp` : Upload artifact package to a server using SCP protocol
+    ///     * `Format` : scp://`<USERNAME>`:`<PASSWORD>`@`<HOSTNAME>`:`<PORT>`:`<PATH>`
+    ///     * `Example`: scp://testusername:testpassword@192.168.100.190:22:/dev/shm
     pub fn new(config: &str) -> Result<Self, FennecError> {
-        let protocol = Regex::new("(?P<protocol>(aws3|s3))")
+        let protocol = Regex::new("(?P<protocol>(aws3|s3|scp))")
             .unwrap()
             .captures(config)
             .ok_or(FennecError::upload_config_error(
@@ -89,6 +112,10 @@ impl UploadArtifacts {
             }
             "aws3" => {
                 let regex = "(?P<protocol>aws3)://(\")?(?P<access_key>[^\":]+)(\")?:(\")?(?P<secret_access_key>[^\":]+)(\")?@(?P<regoin>[a-zA-Z0-9\\-]+)\\.(?P<bucket_name>[a-zA-Z0-9\\-]+):(?P<path>[a-zA-Z0-9\\.\\-_/]+)";
+                Regex::new(regex).unwrap()
+            }
+            "scp" => {
+                let regex = "(?P<protocol>scp)://(\")?(?P<username>[^\":]+)(\")?:(\")?(?P<password>[^\":]+)(\")?@(?P<hostname>[a-zA-Z0-9\\-\\.]+):(?P<port>[0-9]+):(?P<path>[a-zA-Z0-9\\.\\-_/]+)";
                 Regex::new(regex).unwrap()
             }
             _ => {
@@ -155,6 +182,34 @@ impl UploadArtifacts {
                             secret_access_key,
                             regoin,
                             bucket_name,
+                            path,
+                        });
+
+                        info!(
+                            "Using the configuration '{:?}' to upload the artifacts",
+                            config
+                        );
+
+                        return Ok(UploadArtifacts { config });
+                    }
+                    "scp" => {
+                        let username = captures.name("username").unwrap().as_str().to_string();
+                        let password = captures.name("password").unwrap().as_str().to_string();
+                        let hostname = captures.name("hostname").unwrap().as_str().to_string();
+                        let port = captures
+                            .name("port")
+                            .unwrap()
+                            .as_str()
+                            .to_string()
+                            .parse::<u16>()
+                            .unwrap();
+                        let path = captures.name("path").unwrap().as_str().to_string();
+
+                        let config = UploadSupportedProtocols::SCP(ScpConfig {
+                            username,
+                            password,
+                            hostname,
+                            port,
                             path,
                         });
 
@@ -337,6 +392,47 @@ impl UploadArtifacts {
                             ),
                         ));
                     }
+                }
+            }
+            UploadSupportedProtocols::SCP(config) => {
+                let mut session = ssh::create_session();
+                session.set_user_and_password(&config.username, &config.password);
+                if let Err(e) = session.connect(format!("{}:{}", config.hostname, config.port)) {
+                    return Err(FennecError::upload_error(format!(
+                        "Unable to connect to the server '{}:{}' with the username '{}', ERROR: {}",
+                        config.hostname, config.port, config.username, e
+                    )));
+                }
+
+                let mut channel = session.open_scp().map_err(|e| {
+                        FennecError::upload_error(
+                            format!(
+                                "Unable to open SCP session to the server '{}:{}' using the username '{}', ERROR: {}", 
+                                config.hostname, config.port, config.username, e
+                            )
+                    )
+                })?;
+
+                let local_path_str = path.as_ref().to_str().unwrap();
+
+                info!(
+                    "Uploading artifact package '{}' to the server '{}:{}' with the path '{}'",
+                    path.as_ref().to_str().unwrap(),
+                    config.hostname,
+                    config.port,
+                    config.path
+                );
+
+                match channel.upload(local_path_str, &config.path) {
+                    Ok(_) => Ok(true),
+                    Err(e) => Err(FennecError::upload_error(format!(
+                        "Unable to upload the artifact file '{}' to the server '{}:{}' with the path '{}', ERROR: {}",
+                        path.as_ref().to_str().unwrap(),
+                        config.hostname,
+                        config.port,
+                        config.path,
+                        e
+                    ))),
                 }
             }
         }

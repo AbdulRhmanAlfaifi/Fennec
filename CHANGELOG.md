@@ -1,3 +1,6 @@
+# Fennec v0.3.3
+* Added support to SCP protocol in artifact package upload feature
+* Fixes #8
 # Fennec v0.3.2
 * Added aarch64 build to CI workflow
 * Miner modifications
