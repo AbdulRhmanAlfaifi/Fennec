@@ -148,6 +148,7 @@ pub struct Fennec<'a> {
     _extension: OutputFormat,
     _output_file: &'a mut ZipWriter<File>,
     _foptions: FileOptions,
+    _osquery_timeout: u64,
     _file_collect_buf_size: usize,
 }
 
@@ -192,6 +193,7 @@ impl<'a> Fennec<'a> {
             _extension: OutputFormat::JSONL,
             _output_file: output_path,
             _foptions: foptions,
+            _osquery_timeout: 10,
             _file_collect_buf_size: 1024 * 1024 * 5,
         })
     }
@@ -290,6 +292,12 @@ impl<'a> Fennec<'a> {
         self
     }
 
+    /// Sets osquery queries timeout in seconds, Default `10`
+    pub fn set_timeout(mut self, timeout: u64) -> Self {
+        self._osquery_timeout = timeout;
+        self
+    }
+
     /// Start triage collection from the artifacts specified in the configuration
     pub fn triage(&mut self) -> Result<bool, FennecError> {
         let mut process_osquery_artifacts = true;
@@ -302,7 +310,9 @@ impl<'a> Fennec<'a> {
                     &self._osquery_binary_path, e
                 ))
             }) {
-            Ok(instance) => osquery_instance = instance,
+            Ok(instance) => {
+                osquery_instance = instance.set_timeout(self._osquery_timeout);
+            }
             Err(e) => {
                 error!("{}", e.message);
                 process_osquery_artifacts = false;

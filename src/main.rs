@@ -100,6 +100,15 @@ macro_rules! init_args {
                 .takes_value(true),
         )
         .arg(
+            Arg::new("timeout")
+                .short('t')
+                .long("timeout")
+                .value_name("SEC")
+                .help("Sets osquery queries timeout in seconds")
+                .default_value("60")
+                .takes_value(true),
+        )
+        .arg(
             Arg::new("show_config")
                 .long("show-config")
                 .help("Show the embedded configuration file"),
@@ -298,6 +307,18 @@ fn main() {
         _ => cli_matches.value_of("log_path").unwrap(),
     };
 
+    let timeout = match cli_matches.occurrences_of("timeout") {
+        0 => conf_matches.value_of("timeout").unwrap().parse::<u64>(),
+        _ => cli_matches.value_of("timeout").unwrap().parse::<u64>(),
+    };
+
+    let timeout = match timeout {
+        Ok(t) => t,
+        Err(e) => {
+            panic!("The 'timeout' option should be a number, ERROR: {}", e);
+        }
+    };
+
     to_cleanup.push(log_path.to_string());
 
     let log_level = {
@@ -488,6 +509,7 @@ fn main() {
         .unwrap()
         .set_output_format(output_format)
         .set_osquery_binary_path(osquery_path)
+        .set_timeout(timeout)
         .set_options(&foptions);
 
     match fennec.triage() {
