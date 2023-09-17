@@ -1,0 +1,183 @@
+{
+    "$schema": "http://json-schema.org/draft-06/schema#",
+    "$ref": "#/definitions/Fennec",
+    "definitions": {
+        "Fennec": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "args": {
+                    "type": "array",
+                    "description": "List of commands line arguments to override the default values (ex. `--output-format` could be set to `csv` so it will be used automatically without specifing it in the command line arguments)",
+                    "title": "Commandline Arguments",
+                    "minItems": 0,
+                    "default": []
+                },
+                "artifacts": {
+                    "type": "array",
+                    "description": "List of artifact definitions",
+                    "items": {
+                        "$ref": "#/definitions/Artifact"
+                    }
+                }
+            },
+            "required": [
+                "args",
+                "artifacts"
+            ],
+            "title": "List of Artifacts"
+        },
+        "Artifact": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "title": "Artifact Name",
+                    "description": "Name of the artifact. This name will be used as the file name for the output"
+                },
+                "type": {
+                    "title": "Artifact Type",
+                    "description": "The type of the artifact",
+                    "$ref": "#/definitions/Type"
+                },
+                "description": {
+                    "title": "Artifact Description",
+                    "description": "Description about the artifact, this is used only as a reference for the analyst",
+                    "type": "string"
+                },
+                "commands": {
+                    "title": "Commands",
+                    "description": "List of command to be executed with the `command` artifact type",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "regex": {
+                    "title": "Regular Expression",
+                    "description": "Regular expression in group capture formate. This field will be user with `parser` & `command` artifact types to parse and output the data in structured format",
+                    "type": "string"
+                },
+                "timeout": {
+                    "title": "Command Timeout",
+                    "description": "Used with the `command` artifact type to set a timeout for the command getting executed",
+                    "type": "integer"
+                },
+                "maps": {
+                    "title": "Field Maps",
+                    "description": "Used to map field names to other name (ex. change the field `creation_time` to `@timestamp`)",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Map"
+                    }
+                },
+                "queries": {
+                    "title": "OSQuery Queries",
+                    "description": "List of OSQuery queries used with `query` artifact type",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "paths": {
+                    "title": "File System Paths",
+                    "description": "List of paths used with `collection` & `parse` artifact types",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            },
+            "required": [
+                "description",
+                "name",
+                "type"
+            ],
+            "title": "Artifact"
+        },
+        "Map": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "from": {
+                    "description": "Change the field name from this value",
+                    "type": "string"
+                },
+                "to": {
+                    "description": "Change the field name to this value",
+                    "type": "string"
+                },
+                "keep_original": {
+                    "description": "Keep the original field name with the new data after post-processing. Default is 'true'",
+                    "type": "boolean"
+                },
+                "modifier": {
+                    "description": "Run post processing function on the value of this field",
+                    "$ref": "#/definitions/Modifier"
+                }
+            },
+            "required": [
+                "from",
+                "to"
+            ],
+            "title": "Field Maps"
+        },
+        "Modifier": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "name": {
+                    "description": "Name of the modifier to user",
+                    "$ref": "#/definitions/Name"
+                },
+                "parameters": {
+                    "description": "Parameters to be passed to the modifier",
+                    "$ref": "#/definitions/Parameters"
+                }
+            },
+            "required": [
+                "name"
+            ],
+            "title": "Field Modifier"
+        },
+        "Parameters": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "input_time_format": {
+                    "description": "The date and time format for the input date and time (reference: https://docs.rs/chrono/latest/chrono/format/strftime/index.html)",
+                    "type": "string"
+                },
+                "output_time_format": {
+                    "description": "The date and time format for the output date and time (reference: https://docs.rs/chrono/latest/chrono/format/strftime/index.html)",
+                    "type": "string"
+                },
+                "local_timezone": {
+                    "type": "boolean"
+                }
+            },
+            "title": "Modifer Parameters"
+        },
+        "Name": {
+            "type": "string",
+            "enum": [
+                "epoch_to_iso",
+                "datetime_to_iso",
+                "time_without_year_to_iso",
+                "to_int"
+            ],
+            "title": "Modifer Name"
+        },
+        "Type": {
+            "type": "string",
+            "enum": [
+                "command",
+                "query",
+                "collection",
+                "parse"
+            ],
+            "title": "Artifact Type"
+        }
+    }
+}

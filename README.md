@@ -48,7 +48,7 @@ fennec is an artifact collection tool written in Rust to be used during incident
 ## Usage ✍
 
 ```verilog
-fennec 0.3.0
+fennec 0.4.0
 AbdulRhman Alfaifi <aalfaifi@u0041.co>
 Aritfact collection tool for *nix systems
 
@@ -87,9 +87,21 @@ OPTIONS:
         --show-embedded
             Show the embedded files metadata
 
+    -t, --timeout <SEC>
+            Sets osquery queries timeout in seconds [default: 60]
+
     -u, --upload-artifact <CONFIG>...
-            Upload configuration string. Supported protocols: s3, aws3 and scp. Configuration
-            reference: 'https://github.com/AbdulRhmanAlfaifi/Fennec'
+            Upload configuration string. Supported Protocols:
+            * s3 : Upload artifact package to S3 bucket (ex. minio)
+                * Format :
+            s3://<ACCESS_KEY>:<SECRET_ACCESS_KEY>@(http|https)://<HOSTNAME>:<PORT>/<BUCKET_NAME>:<PATH>
+                * Example (minio): s3://minioadmin:minioadmin@http://192.168.100.190:9000/fennec:/
+            * aws3 : Upload artifact package to AWS S3 bucket
+                * Format : aws3://<ACCESS_KEY>:<SECRET_ACCESS_KEY>@<AWS_REGOIN>.<BUCKET_NAME>:<PATH>
+                * Example: aws3://AKIAXXX:XXX@us-east-1.fennecbucket:/
+            * scp : Upload artifact package to a server using SCP protocol
+                * Format : scp://<USERNAME>:<PASSWORD>@<HOSTNAME>:<PORT>:<PATH>
+                * Example: scp://testusername:testpassword@192.168.100.190:22:/dev/shm
 
     -V, --version
             Print version information
@@ -110,6 +122,7 @@ OPTIONS:
 * `-q`, `--quiet` : Do not print logs to `stdout`
 * `--show-config` : Print the embedded configuration then exit
 * `--show-embedded` : Show embedded files
+* `-t`, `--timeout` : Sets the timeout in seconds for each osquery in query artifact type
 * `-u`, `--upload-artifact` : Upload artifact package to a remote server. Supported protocoles:
   * `s3` : Upload artifact package to S3 bucket
     * `Format` : s3://<ACCESS_KEY>:<SECRET_ACCESS_KEY>@(http|https)://<HOSTNAME>:<PORT>/<BUCKET_NAME>:<PATH>
@@ -126,7 +139,7 @@ OPTIONS:
 
 fennec depends on `osquery` to run the artifacts with the type `query`. The directory called `deps` contains the file that will be embedded into the binary depending on the target OS and architecture, Before compiling follow the below steps:
 
-* Modify the configuration file `deps/<TARGET_OS>/config.yaml` as needed
+* Modify the configuration file `deps/<TARGET_OS>/fennec.yaml` as needed
 
 * Build the binary using one of the commands below:
 
@@ -180,7 +193,7 @@ then upload the resulting zip file to Kuiper, the following is an example:
 
 ## Configuration🔨
 
-By default the configuration in the path `deps/config.yaml` will be embedded into the executable during compilation. The configuration is in YAML format and have two sections:
+By default the configuration in the path `deps/<TARGET_OS>/fennec.yaml` will be embedded into the executable during compilation. The configuration is in YAML format and have two sections:
 
 ### Args
 
@@ -213,7 +226,7 @@ Contains a list of artifacts to be collected. Each artifact contains the followi
   * parse
 * description (**optional**): contain description about the artifact
 * quires **OR** paths **OR** commands: quires if the artifact type is **query** and it contains a list of osquery SQL queries. paths if the artifact type is collection **OR** parse and it contains a list of paths. commands if the artifact type is **command** and it contains a list commands. These names are for the sake of readability ,you can use any of them in any artifact type.
-* regex: this field is only used if the artifact type **parse** is used, this field contains regex to parse text file
+* regex: this field is only used if the artifact type **parse** or **command** is used, this field contains regex to parse the text file in case of **parse** artifact or the `stdout` in case of **command** artifact
 * maps (**optional**): contains a list of mappers to modify key names and format values, check the maps section for more details
 
 #### Artifact Types: Query
@@ -260,7 +273,29 @@ artifacts:
     type: command
     description: "Get failed logins (/var/log/btmp)"
     commands:
-        - 'lastb --time-format=iso'
+      - "lastb --time-format=iso | head -n -1"
+    timeout: 30
+    regex: '(?P<username>[^ ]+)[ ]+?(?P<tty>[^ ]+)[ ]+?(?P<src_ip>[^ ]+)?[ ]+?(?P<login_time>[^ ]+) - (?P<logout_time>[^ ]+)[ ]+?(\()?(?P<duration>[^ ]+)(\))'
+```
+This artifact type will execute the commands in the list `commands` and parse the `stdout` using the regular expression specified in the field `regex`. Note that the regex will only be processed on `stdout` stream and not `stderr`. Also, the field `regex` is optional. Here is an example of the results both using `regex` field and without it:
+##### Without `regex` field
+```json
+{
+  "line": 0,
+  "stdout": "root     pts/1                         2023-09-12T17:13:28+03:00 - 2023-09-12T17:13:28+03:00  (00:00)"
+}
+```
+##### With `regex` field
+```json
+{
+  "username": "root",
+  "tty": "pts/1",
+  "src_ip": null,
+  "login_time": "2023-09-12 14:13:28",
+  "logout_time": "2023-09-12T17:13:28+03:00",
+  "duration": "00:00",
+  "@timestamp": "2023-09-12 14:13:28"
+}
 ```
 
 #### Artifact Types: Parse
@@ -423,6 +458,7 @@ The available modifiers are:
 | epoch_to_iso             | Converts epoch timestamp to custom date and time format      | N/A                                    | specify the output date and time format , default is `%Y-%m-%d %H:%M:%S` |
 | datetime_to_iso          | Reformat date and time form the format `input_time_format` to the format `output_time_format` | specify the input date and time format | specify the output date and time format , default is `%Y-%m-%d %H:%M:%S` |
 | time_without_year_to_iso | Format date and time without a year data form the format `input_time_format` to the format `output_time_format` | specify the input date and time format | specify the output date and time format , default is `%Y-%m-%d %H:%M:%S` |
+| to_int | Convert string data (like `command` & `parse` artifact types) to integers (`i64` i.e signed 64bit integer). This is useful with field like the file size so we can do checks like `size < 1024` using the data platform of our choice | N/A | N/A |
 
 The `time_without_year_to_iso` modifier works as follows:
 

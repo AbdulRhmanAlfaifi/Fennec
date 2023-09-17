@@ -4,7 +4,7 @@ use chrono::{DateTime, Datelike, FixedOffset, Local, NaiveDateTime, TimeZone, Ut
 
 use log::*;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ModifierType {
@@ -14,6 +14,8 @@ pub enum ModifierType {
     DatetimeTimeToISO,
     #[serde(rename = "time_without_year_to_iso")]
     TimeWithoutYearToISO,
+    #[serde(rename = "to_int")]
+    ToInt,
 }
 
 impl Display for ModifierType {
@@ -22,6 +24,7 @@ impl Display for ModifierType {
             Self::EpochToISO => f.write_str("epoch_to_iso"),
             Self::DatetimeTimeToISO => f.write_str("datetime_to_iso"),
             Self::TimeWithoutYearToISO => f.write_str("time_without_year_to_iso"),
+            Self::ToInt => f.write_str("to_int"),
         }
     }
 }
@@ -72,27 +75,51 @@ impl Modifier {
         };
         match self.name {
             ModifierType::EpochToISO => match field {
-                Value::String(ref epoch_str) => match epoch_str.parse() {
-                    Ok(num) => {
-                        let iso_time = NaiveDateTime::from_timestamp(num, 0)
-                            .format(&time_format)
-                            .to_string();
-                        Value::String(iso_time)
+                Value::String(ref epoch_str) => {
+                    let secs: i64;
+                    if epoch_str.contains(".") {
+                        let parts = epoch_str.split(".").collect::<Vec<&str>>();
+                        secs = match parts[0].parse() {
+                            Ok(s) => s,
+                            Err(e) => {
+                                error!(
+                                    "Unable to convert the seconds portion '{}' to i64 for {}, ERROR {}",
+                                    parts[0],epoch_str, e
+                                );
+                                0
+                            }
+                        };
+                    } else {
+                        secs = match epoch_str.parse() {
+                            Ok(s) => s,
+                            Err(e) => {
+                                error!(
+                                    "Unable to convert string '{}' to i64, ERROR {}",
+                                    epoch_str, e
+                                );
+                                0
+                            }
+                        };
                     }
-                    Err(e) => {
-                        error!(
-                            "Unable to convert the string '{}' to i64, ERROR {}",
-                            epoch_str, e
-                        );
-                        return field;
+                    match NaiveDateTime::from_timestamp_opt(secs, 0) {
+                        Some(iso_time) => Value::String(iso_time.format(&time_format).to_string()),
+                        None => {
+                            error!(
+                                "Unable to convert the epoch timestamp '{}' to ISO format",
+                                secs
+                            );
+                            field
+                        }
                     }
-                },
+                }
                 Value::Number(epoch) => {
                     if let Some(epoch) = epoch.as_i64() {
-                        let iso_time = NaiveDateTime::from_timestamp(epoch, 0)
-                            .format(&time_format)
-                            .to_string();
-                        Value::String(iso_time)
+                        match NaiveDateTime::from_timestamp_opt(epoch, 0) {
+                            Some(timestamp) => {
+                                Value::String(timestamp.format(&time_format).to_string())
+                            }
+                            None => json!(epoch),
+                        }
                     } else {
                         error!("Unable to parse '{}' as i64", epoch);
                         Value::Number(epoch)
@@ -115,25 +142,43 @@ impl Modifier {
                     };
 
                     let tz_offset = match local_timezone {
-                        true => Local.timestamp(0, 0).offset().clone(),
-                        false => FixedOffset::east(0),
+                        true => Local.timestamp_opt(0, 0).unwrap().offset().clone(),
+                        false => FixedOffset::east_opt(0).unwrap(),
                     };
 
-                    match NaiveDateTime::parse_from_str(&datetime_str, &input_time_format) {
-                        Ok(datetime) => match tz_offset.from_local_datetime(&datetime) {
-                            chrono::LocalResult::Single(datetime) => {
+                    // The input datetime have timezone info
+                    if input_time_format.to_lowercase().contains("z") {
+                        match DateTime::parse_from_str(&datetime_str, &input_time_format) {
+                            Ok(datetime) => {
                                 let utc_datetime =
-                                    DateTime::<Utc>::from_utc(datetime.naive_utc(), Utc);
+                                    datetime.with_timezone(&FixedOffset::east_opt(0).unwrap());
                                 Value::String(utc_datetime.format(&time_format).to_string())
                             }
-                            _ => {
-                                error!("Unable to convert '{:?}' to UTC timezone, retrning unchanged field", datetime);
-                                Value::String(datetime_str.to_string().clone())
+                            Err(e) => {
+                                error!("Unable to parser the date '{}' with the formate '{}', ERROR: '{}'", datetime_str, &input_time_format, e);
+                                field
                             }
-                        },
-                        Err(e) => {
-                            error!("Unable to parser the date '{}' with the formate '%d/%b/%Y:%H:%M:%S %z', ERROR: '{}'", datetime_str, e);
-                            field
+                        }
+                    }
+                    // The input datetime doesn't have timezone info.
+                    // if 'local_timezone' is set to true it will take the local timezone of the system, otherwise it will process it as UTC timezone
+                    else {
+                        match NaiveDateTime::parse_from_str(&datetime_str, &input_time_format) {
+                            Ok(datetime) => match tz_offset.from_local_datetime(&datetime) {
+                                chrono::LocalResult::Single(datetime) => {
+                                    let utc_datetime =
+                                        DateTime::<Utc>::from_utc(datetime.naive_utc(), Utc);
+                                    Value::String(utc_datetime.format(&time_format).to_string())
+                                }
+                                _ => {
+                                    error!("Unable to convert '{:?}' to UTC timezone, retrning unchanged field", datetime);
+                                    Value::String(datetime_str.to_string().clone())
+                                }
+                            },
+                            Err(e) => {
+                                error!("Unable to parser the date '{}' with the formate '{}', ERROR: '{}'", datetime_str, &input_time_format, e);
+                                field
+                            }
                         }
                     }
                 }
@@ -153,8 +198,8 @@ impl Modifier {
                         }
                     };
                     let tz_offset = match local_timezone {
-                        true => Local.timestamp(0, 0).offset().clone(),
-                        false => FixedOffset::east(0),
+                        true => Local.timestamp_opt(0, 0).unwrap().offset().clone(),
+                        false => FixedOffset::east_opt(0).unwrap(),
                     };
                     let current_time: DateTime<Utc> = SystemTime::now().into();
 
@@ -200,6 +245,19 @@ impl Modifier {
                         }
                     }
                 }
+                _ => field,
+            },
+            ModifierType::ToInt => match &field {
+                Value::String(num) => match num.parse::<i64>() {
+                    Ok(n) => json!(n),
+                    Err(e) => {
+                        error!(
+                            "Unable to parser the string '{}' to type 'i64', ERROR: {}",
+                            num, e
+                        );
+                        field
+                    }
+                },
                 _ => field,
             },
         }

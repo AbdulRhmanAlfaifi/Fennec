@@ -1,4 +1,4 @@
-args:
+args: []
 artifacts:
   - name: authorized_keys
     type: query
@@ -53,6 +53,12 @@ artifacts:
     queries:
       - "select * from groups"
 
+  - name: apt_sources
+    type: query
+    description: "Get sources for apt package manager (Debian based)"
+    queries:
+      - "select * from apt_sources"
+
   - name: arp_cache
     type: query
     description: "Get arp table cache"
@@ -65,38 +71,46 @@ artifacts:
     queries:
       - "select * from crontab"
 
-  - name: apps
+  - name: deb_packages
     type: query
-    description: "macOS applications installed in known search paths (e.g., /Applications)"
+    description: "Get installed packages (Debian based)"
     queries:
-      - "select * from apps"
-    maps:
-      - from: last_opened_time
-        to: "@timestamp"
-        modifier:
-          name: datetime_to_iso
-          parameters:
-            input_time_format: "%s.%f"
+      - "select * from deb_packages"
 
-  - name: file_list
-    type: query
-    description: "Get metadata for files on system"
-    queries:
-      - 'select * from file where path like "/Users/%%"'
-      - 'select * from file where path like "/root/%%"'
-      - 'select * from file where path like "/media/%%"'
-      - 'select * from file where path like "/var/%%"'
-      - 'select * from file where path like "/etc/%%"'
-      - 'select * from file where path like "/mnt/%%"'
-      - 'select * from file where path like "/tmp/%%"'
-      - 'select * from file where path like "/opt/%%"'
-      - 'select * from file where path like "/u01/%%"'
-      - 'select * from file where path like "/dev/shm/%%"'
-    maps:
-      - from: ctime
-        to: "@timestamp"
-        modifier:
-          name: epoch_to_iso
+  # Replaced by the 'file_list' artifact using 'command' artifact type instead of 'query'.
+  # This is because the file table in osquery isn't meant to be used to list all files on the file system and it returns limitted results
+
+  # - name: file_list
+  #   type: query
+  #   description: "Get metadata for files on system"
+  #   queries:
+  #     - 'select * from file where path like "/bin/%%"'
+  #     - 'select * from file where path like "/boot/%%"'
+  #     - 'select * from file where path like "/dev/%%"'
+  #     - 'select * from file where path like "/etc/%%"'
+  #     - 'select * from file where path like "/home/%%"'
+  #     - 'select * from file where path like "/init/%%"'
+  #     - 'select * from file where path like "/lib/%%"'
+  #     - 'select * from file where path like "/lib32/%%"'
+  #     - 'select * from file where path like "/lib64/%%"'
+  #     - 'select * from file where path like "/libx32/%%"'
+  #     - 'select * from file where path like "/lost+found/%%"'
+  #     - 'select * from file where path like "/media/%%"'
+  #     - 'select * from file where path like "/nonexistent/%%"'
+  #     - 'select * from file where path like "/opt/%%"'
+  #     - 'select * from file where path like "/root/%%"'
+  #     - 'select * from file where path like "/run/%%"'
+  #     - 'select * from file where path like "/sbin/%%"'
+  #     - 'select * from file where path like "/snap/%%"'
+  #     - 'select * from file where path like "/srv/%%"'
+  #     - 'select * from file where path like "/tmp/%%"'
+  #     - 'select * from file where path like "/usr/%%"'
+  #     - 'select * from file where path like "/var/%%"'
+  #   maps:
+  #     - from: ctime
+  #       to: "@timestamp"
+  #       modifier:
+  #         name: epoch_to_iso
 
   - name: docker_containers
     type: query
@@ -121,11 +135,11 @@ artifacts:
     queries:
       - "select * from interface_addresses"
 
-  - name: alf
+  - name: iptables
     type: query
-    description: "macOS application layer firewall (ALF) service details"
+    description: "Get iptables rules"
     queries:
-      - "select * from alf"
+      - "select * from iptables"
 
   - name: last
     type: query
@@ -148,7 +162,7 @@ artifacts:
     type: query
     description: "Get the currently logged-in users"
     queries:
-      - "select liu.*, p.name, p.cmdline, p.cwd, p.root from logged_in_users liu, processes p where liu.pid = p.pid"
+      - "select * from logged_in_users"
     maps:
       - from: time
         to: "@timestamp"
@@ -185,16 +199,22 @@ artifacts:
     queries:
       - "select * from routes"
 
-  - name: homebrew_packages
+  - name: rpm_packages
     type: query
-    description: "Get installed homebrew packages"
+    description: "Get installed packages (RedHat based)"
     queries:
-      - "select * from homebrew_packages"
+      - "select * from rpm_packages"
     maps:
       - from: install_time
         to: "@timestamp"
         modifier:
           name: epoch_to_iso
+
+  - name: selinux_settings
+    type: query
+    description: "Get selinux configurations"
+    queries:
+      - "select * from selinux_settings"
 
   - name: shell_history
     type: query
@@ -219,103 +239,92 @@ artifacts:
     queries:
       - "select * from uptime"
 
-  - name: asl
+  - name: yum_sources
     type: query
-    description: "Queries the Apple System Log data structure for system events"
+    description: "Get package manager sources (RedHat based)"
     queries:
-      - "select * from asl"
-    maps:
-      - from: time
-        to: "@timestamp"
-        modifier:
-          name: epoch_to_iso
+      - "select * from yum_sources"
 
-  - name: wifi_networks
+  - name: shadow
     type: query
-    description: "Get known/remembered Wi-Fi networks list"
+    description: "Get information about user from /etc/shadow such as enabled accounts, password algorithm, etc"
     queries:
-      - "select * from wifi_networks"
-    maps:
-      - from: last_connected
-        to: "@timestamp"
-        modifier:
-          name: epoch_to_iso
-
-  - name: time_machine
-    type: query
-    description: "Get TimeMachine backup info"
-    queries:
-      - "select alias, backup_date, td.destination_id, root_volume_uuid, encryption, consistency_scan_date, bytes_available, bytes_used from time_machine_backups tb join time_machine_destinations td on (td.destination_id=tb.destination_id)"
-    maps:
-      - from: backup_date
-        to: "@timestamp"
-        modifier:
-          name: epoch_to_iso
-
-  - name: shared_folders
-    type: query
-    description: "Folders available to others via SMB or AFP"
-    queries:
-      - "select * from shared_folders"
-
-  - name: keychain_acls
-    type: query
-    description: "Applications that have ACL entries in the keychain"
-    queries:
-      - "select * from keychain_acls"
-
-  - name: keychain_items
-    type: query
-    description: "Generic details about keychain items"
-    queries:
-      - "select * from keychain_items"
-    maps:
-      - from: created
-        to: "@timestamp"
-        modifier:
-          name: datetime_to_iso
-          parameters:
-            input_time_format: "%Y%m%d%H%M%SZ"
-      - from: modified
-        to: "modified"
-        modifier:
-          name: datetime_to_iso
-          parameters:
-            input_time_format: "%Y%m%d%H%M%SZ"
-
-  - name: bad_logins
-    type: query
-    description: "Get failed logins"
-    queries:
-      - "SELECT users.username, account_policy_data.failed_login_count, account_policy_data.failed_login_timestamp FROM users INNER JOIN account_policy_data using (uid) WHERE account_policy_data.failed_login_count > 0"
-    maps:
-      - from: failed_login_timestamp
-        to: "@timestamp"
-        modifier:
-          name: datetime_to_iso
-          parameters:
-            input_time_format: "%s.%f"
-
-  - name: nfs_shares
-    type: query
-    description: "Retrieves the current list of mounted drives"
-    queries:
-      - "select * from nfs_shares"
-
-  - name: launchd
-    type: query
-    description: "Retrieves all the daemons that will run on boot"
-    queries:
-      - "select * from launchd"
+      - "select * from shadow"
 
   - name: logs
     type: collection
     description: "Collect system logs"
     paths:
       - "/var/log/**/*"
-      - "/Users/*/.vnc/*.log"
-      - "/private/var/log/**/*"
+      - "/home/*/.vnc/*.log"
 
+  - name: bad_logins
+    type: command
+    description: "Get failed logins (/var/log/btmp)"
+    commands:
+      - "lastb --time-format=iso | head -n -1"
+    timeout: 30
+    regex: '(?P<username>[^ ]+)[ ]+?(?P<tty>[^ ]+)[ ]+?(?P<src_ip>[^ ]+)?[ ]+?(?P<login_time>[^ ]+) - (?P<logout_time>[^ ]+)[ ]+?(\()?(?P<duration>[^ ]+)(\))'
+    maps:
+      - from: login_time
+        to: "@timestamp"
+        modifier:
+          name: datetime_to_iso
+          parameters:
+            input_time_format: "%Y-%m-%dT%H:%M:%S%:z"
+            output_time_format: "%Y-%m-%d %H:%M:%S"
+      - from: logout_time
+        to: "logout_time"
+        modifier:
+          name: datetime_to_iso
+          parameters:
+            input_time_format: "%Y-%m-%dT%H:%M:%S%:z"
+            output_time_format: "%Y-%m-%d %H:%M:%S"
+
+  - name: file_list
+    type: command
+    description: "List file info using 'find' command"
+    commands:
+      - 'find / -not \( -path /proc -prune \) -not \( -path /sys -prune \) -not \( -path /mnt -prune \) -printf "%p|%h|%f|%D|%l|%s|%y|%m|%n|%i|%G|%U|%A@|%T@|%C@\\n"'
+    regex: "(?P<path>[^|]+)\\|(?P<directory>[^|]+)?\\|(?P<filename>[^|]+)\\|(?P<device>[^|]+)\\|(?P<symlink>[^|]+)?\\|(?P<size>[^|]+)\\|(?P<type>[^|]+)\\|(?P<mode>[^|]+)\\|(?P<hard_links>[^|]+)\\|(?P<inode>[^|]+)\\|(?P<gid>[^|]+)\\|(?P<uid>[^|]+)\\|(?P<atime>[^|]+)\\|(?P<mtime>[^|]+)\\|(?P<ctime>[^|]+)"
+    timeout: 600
+    maps:
+      - from: ctime
+        to: "@timestamp"
+        modifier:
+          name: epoch_to_iso
+      - from: btime
+        to: btime
+        modifier:
+          name: epoch_to_iso
+      - from: atime
+        to: atime
+        modifier:
+          name: epoch_to_iso
+      - from: mtime
+        to: mtime
+        modifier:
+          name: epoch_to_iso
+      - from: size
+        to: size
+        modifier:
+          name: to_int
+      - from: inode
+        to: inode
+        modifier:
+          name: to_int
+      - from: gid
+        to: gid
+        modifier:
+          name: to_int
+      - from: uid
+        to: uid
+        modifier:
+          name: to_int
+      - from: hard_links
+        to: hard_links
+        modifier:
+          name: to_int
   - name: nginx_access
     type: parse
     description: "Nginx access logs"
@@ -330,7 +339,14 @@ artifacts:
           parameters:
             input_time_format: "%d/%b/%Y:%H:%M:%S %z"
             output_time_format: "%Y-%m-%d %H:%M:%S"
-
+      - from: status_code
+        to: status_code
+        modifier:
+          name: to_int
+      - from: body_bytes_sent
+        to: body_bytes_sent
+        modifier:
+          name: to_int
   - name: auth_log
     type: parse
     description: "Auth logs /var/log/auth.* (Debian based)"
@@ -345,7 +361,10 @@ artifacts:
           parameters:
             input_time_format: "%b %d %H:%M:%S"
             output_time_format: "%Y-%m-%d %H:%M:%S"
-
+      - from: pid
+        to: "pid"
+        modifier:
+          name: to_int
   - name: secure_log
     type: parse
     description: "Secure logs /var/log/secure* (RedHat based)"
@@ -361,7 +380,10 @@ artifacts:
             input_time_format: "%b %d %H:%M:%S"
             output_time_format: "%Y-%m-%d %H:%M:%S"
             local_timezone: true
-
+      - from: pid
+        to: "pid"
+        modifier:
+          name: to_int
   - name: syslog_log
     type: parse
     description: "Syslog logs /var/log/syslog* (Debian based)"
@@ -376,7 +398,10 @@ artifacts:
           parameters:
             input_time_format: "%b %d %H:%M:%S"
             output_time_format: "%Y-%m-%d %H:%M:%S"
-
+      - from: pid
+        to: "pid"
+        modifier:
+          name: to_int
   - name: messages_log
     type: parse
     description: "Messages logs /var/log/messages* (RedHat based)"
@@ -392,7 +417,10 @@ artifacts:
             input_time_format: "%b %d %H:%M:%S"
             output_time_format: "%Y-%m-%d %H:%M:%S"
             local_timezone: true
-
+      - from: pid
+        to: "pid"
+        modifier:
+          name: to_int
   - name: audit_log
     type: parse
     description: "Audit logs /var/log/audit/audit*"
@@ -406,78 +434,3 @@ artifacts:
           name: epoch_to_iso
           parameters:
             output_time_format: "%Y-%m-%d %H:%M:%S"
-
-  #------------------------------------------------------------------------------------------------------
-  # Additional artifacts from https://github.com/osquery/osquery/blob/master/packs/incident-response.conf
-  #------------------------------------------------------------------------------------------------------
-
-  - name: loginwindow
-    type: query
-    description: "Retrieves all the values for the loginwindow process in the target OSX system"
-    queries:
-      - select key, subkey, value from plist where path = '/Library/Preferences/com.apple.loginwindow.plist'
-      - select key, subkey, value from plist where path = '/Library/Preferences/loginwindow.plist'
-      - select username, key, subkey, value from plist p, (select * from users where directory like '/Users/%') u where p.path = u.directory || '/Library/Preferences/com.apple.loginwindow.plist'
-      - select username, key, subkey, value from plist p, (select * from users where directory like '/Users/%') u where p.path = u.directory || '/Library/Preferences/loginwindow.plist'
-
-  - name: alf_exceptions
-    type: query
-    description: Retrieves the exceptions for the Application Layer Firewall in OSX.
-    queries:
-      - select * from alf_exceptions
-
-  - name: alf_services
-    type: query
-    description: Retrieves the services for the Application Layer Firewall in OSX.
-    queries:
-      - select * from alf_services
-
-  - name: alf_explicit_auths
-    type: query
-    description:
-      Retrieves the list of processes with explicit authorization for the
-      Application Layer Firewall.
-    queries:
-      - select * from alf_explicit_auths
-
-  - name: kextstat
-    type: query
-    description: Retrieves all the information about the current kernel extensions for the target OSX system.
-    queries:
-      - select * from kernel_extensions
-
-  - name: ip_forwarding
-    type: query
-    description: Retrieves the current status of IP/IPv6 forwarding.
-    queries:
-      - select * from system_controls where oid = '4.30.41.1' union select * from system_controls where oid = '4.2.0.1'
-
-  - name: recent_items
-    type: query
-    description: Retrieves the list of recent items opened in OSX by parsing the plist per user.
-    queries:
-      - select username, key, value from plist p, (select * from users where directory like '/Users/%') u where p.path = u.directory || '/Library/Preferences/com.apple.recentitems.plist'
-
-  - name: ramdisk
-    type: query
-    description: Retrieves all the ramdisk currently mounted in the target system.
-    queries:
-      - select * from block_devices where type = 'Virtual Interface'
-
-  - name: disk_encryption
-    type: query
-    description: Retrieves the current disk encryption status for the target system.
-    queries:
-      - select * from disk_encryption
-
-  - name: app_schemes
-    type: query
-    description: Retrieves the list of application scheme/protocol-based IPC handlers.
-    queries:
-      - select * from app_schemes
-
-  - name: sandboxes
-    type: query
-    description: Lists the application bundle that owns a sandbox label.
-    queries:
-      - select * from sandboxes

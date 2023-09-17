@@ -2,14 +2,16 @@
 use chrono::{DateTime, Utc};
 use flate2::read::GzDecoder;
 use regex::{self, Regex};
+use std::time::Instant;
 use std::{
     fmt::Display,
     fs::File,
     io::{Read, Write},
     os::unix::prelude::{MetadataExt, PermissionsExt},
     path::{Path, PathBuf},
+    process::Stdio,
     result::Result,
-    time::SystemTime,
+    time::{Duration, SystemTime},
 };
 use zip::{write::FileOptions, CompressionMethod, ZipWriter};
 mod errors;
@@ -22,9 +24,10 @@ use std::process::Command;
 mod modifiers;
 use csv::Writer;
 use modifiers::Modifier;
-
+mod traits;
 use osquery_rs::OSQuery;
 use serde::{Deserialize, Serialize};
+use traits::ReadUntil;
 
 pub mod upload;
 
@@ -39,6 +42,7 @@ pub struct FennecConfig {
 pub struct Map {
     from: String,
     to: String,
+    keep_original: Option<bool>,
     modifier: Option<Modifier>,
 }
 
@@ -63,6 +67,7 @@ pub struct Artifact {
     #[serde(rename = "type")]
     artifact_type: ArtifactType,
     description: Option<String>,
+    timeout: Option<u64>,
     #[serde(alias = "queries", alias = "paths", alias = "commands")]
     artifacts: Vec<String>,
     maps: Option<Vec<Map>>,
@@ -76,19 +81,24 @@ impl Artifact {
                 match data.clone() {
                     Value::Object(data) => match &self.maps {
                         Some(maps) => {
-                            let mut new_data = serde_json::Map::new();
+                            let mut new_data = data.clone();
                             maps.iter().for_each(|map| {
                                 if data.contains_key(&map.from) {
                                     let mut value = data.get(&map.from).unwrap().clone();
                                     if let Some(modifier) = &map.modifier {
                                         value = modifier.run(value);
-                                    }
-                                    for (k, v) in data.iter() {
-                                        if k == &map.from {
-                                            new_data.insert(map.to.clone(), value.clone());
+                                        if let Some(false) = map.keep_original {
+                                            match new_data.remove(&map.from) {
+                                                Some(_) => {
+                                                    debug!("Removed the old field name '{}' for the artifact '{}' results", map.from, self.name);
+                                                }
+                                                None => {}
+                                            }
                                         } else {
-                                            new_data.insert(k.to_string(), v.clone());
+                                            new_data.insert(map.from.clone(), value.clone());
+
                                         }
+                                        new_data.insert(map.to.clone(), value);
                                     }
                                 }
                             });
@@ -116,6 +126,7 @@ impl Default for Artifact {
             name: String::from("users"),
             artifact_type: ArtifactType::Query,
             description: Some(String::from("Collect users info")),
+            timeout: Some(300),
             artifacts: vec![String::from("select * from users")],
             maps: None,
             regex: None,
@@ -651,34 +662,142 @@ impl<'a> Fennec<'a> {
                         }
                     };
                     for command in artifact.artifacts.iter() {
-                        let res = Command::new(&shell).arg("-c").arg(command).output();
-                        match res {
-                            Ok(result) => {
-                                let mut counter: usize = 0;
-                                let mut csv_headers_printed = false;
-                                for line in String::from_utf8_lossy(&result.stdout).split("\n") {
-                                    if !line.is_empty() {
-                                        let mut row = json!({
-                                            "line": counter,
-                                            "stdout": line
-                                        });
+                        let mut child = Command::new(&shell)
+                            .arg("-c")
+                            .arg(command)
+                            .stdout(Stdio::piped())
+                            .stderr(Stdio::piped())
+                            .spawn()
+                            .unwrap();
+                        let pid = child.id();
+                        let timeout_in = match artifact.timeout {
+                            Some(timeout) => {
+                                info!("Started the command '{}' for the artifact '{}' with timeout of '{}' seconds. PID: {}", command, artifact.name, timeout, pid);
+                                Duration::from_secs(timeout)
+                            }
+                            None => {
+                                info!("Started the command '{}' for the artifact '{}' without timeout. Setting timout to '600' seconds. Make sure to set timeout for all command artifacts to aviod command taking unresonable time to finish. PID: {}", command, artifact.name, pid);
+                                Duration::from_secs(600)
+                            }
+                        };
+                        let started_execution = Instant::now();
 
-                                        if let Some(data) = artifact.map(&row) {
-                                            row = data;
-                                        }
+                        let mut counter = 0;
+                        let mut csv_headers_printed = false;
 
-                                        if let OutputFormat::CSV = self._extension {
-                                            if !csv_headers_printed {
-                                                let mut writer = Writer::from_writer(vec![]);
-                                                writer
-                                                    .write_record(&["line", "stdout/stderr"])
-                                                    .unwrap();
-                                                let data =
-                                                    String::from_utf8(writer.into_inner().unwrap())
+                        // Keep reading stdout until the process exits or the process is killed due to timeout
+                        loop {
+                            match child.stdout.as_mut() {
+                                Some(stdout) => {
+                                    let mut csv_headers =
+                                        vec!["line".to_string(), "stdout/stderr".to_string()];
+                                    match stdout.read_until(0xA) {
+                                        Ok(line) => {
+                                            if !line.is_empty() {
+                                                let mut row: Value = json!({});
+                                                match &artifact.regex {
+                                                    Some(regex) => {
+                                                        if let Ok(re) = Regex::new(regex) {
+                                                            if let Some(groups) = re.captures(&line)
+                                                            {
+                                                                let mut data: serde_json::Map<
+                                                                    String,
+                                                                    Value,
+                                                                > = serde_json::Map::new();
+                                                                re.capture_names().for_each(|name| {
+                                                                    if let Some(name) = name {
+                                                                        let value = match groups.name(name) {
+                                                                            Some(m) => Value::String(
+                                                                                m.as_str().to_string(),
+                                                                            ),
+                                                                            None => Value::Null,
+                                                                        };
+                                                                        data.insert(name.to_string(), value);
+                                                                    }
+                                                                });
+
+                                                                let mut json =
+                                                                    Value::Object(data.clone());
+
+                                                                if let Some(data) =
+                                                                    artifact.map(&json)
+                                                                {
+                                                                    json = data;
+                                                                }
+                                                                row = json;
+                                                            } else {
+                                                                error!("Unable to parse the line '{}' for the artifact '{}'", line, artifact.name);
+                                                            }
+                                                        }
+                                                    }
+                                                    None => {
+                                                        row = json!({
+                                                            "line": counter,
+                                                            "stdout": line
+                                                        });
+
+                                                        if let Some(data) = artifact.map(&row) {
+                                                            row = data;
+                                                        }
+                                                    }
+                                                }
+
+                                                if let OutputFormat::CSV = self._extension {
+                                                    if !csv_headers_printed {
+                                                        if let Some(_) = &artifact.regex {
+                                                            csv_headers = row
+                                                                .as_object()
+                                                                .unwrap()
+                                                                .keys()
+                                                                .map(|s| s.to_owned())
+                                                                .collect::<Vec<String>>();
+                                                        }
+                                                        let mut writer =
+                                                            Writer::from_writer(vec![]);
+                                                        writer.write_record(&csv_headers).unwrap();
+                                                        let data = String::from_utf8(
+                                                            writer.into_inner().unwrap(),
+                                                        )
                                                         .unwrap();
+                                                        match self
+                                                            ._output_file
+                                                            .write(data.as_bytes())
+                                                        {
+                                                            Ok(_) => {
+                                                                debug!(
+                                                                        "Wrote headers for the artifact '{}' to '{}'",
+                                                                        artifact.name,
+                                                                        format!(
+                                                                            "{}.{}",
+                                                                            artifact.name, self._extension
+                                                                        )
+                                                                    );
+                                                                if let Err(e) =
+                                                                    self._output_file.flush()
+                                                                {
+                                                                    error!(
+                                                                        "Unable to flush stream, ERROR: {}",
+                                                                        e
+                                                                    );
+                                                                };
+                                                            }
+                                                            Err(e) => {
+                                                                error!("Unable to write the results for the artifact '{}' to '{}', ERROR: '{}'", artifact.name, format!("{}.{}",artifact.name,self._extension), e);
+                                                            }
+                                                        }
+                                                        csv_headers_printed = true
+                                                    }
+                                                }
+
+                                                let data = self.format(&row, &artifact);
                                                 match self._output_file.write(data.as_bytes()) {
-                                                    Ok(_) => {
-                                                        debug!("Wrote headers for the artifact '{}' to '{}'", artifact.name, format!("{}.{}",artifact.name,self._extension));
+                                                    Ok(n) => {
+                                                        debug!(
+                                                            "Wrote '{}' bytes for the artifact '{}' to '{}'",
+                                                            n,
+                                                            artifact.name,
+                                                            format!("{}.{}", artifact.name, self._extension)
+                                                        );
                                                         if let Err(e) = self._output_file.flush() {
                                                             error!(
                                                                 "Unable to flush stream, ERROR: {}",
@@ -690,60 +809,109 @@ impl<'a> Fennec<'a> {
                                                         error!("Unable to write the results for the artifact '{}' to '{}', ERROR: '{}'", artifact.name, format!("{}.{}",artifact.name,self._extension), e);
                                                     }
                                                 }
-                                                csv_headers_printed = true
+                                                counter += 1;
                                             }
                                         }
-
-                                        let data = self.format(&row, &artifact);
-                                        match self._output_file.write(data.as_bytes()) {
-                                            Ok(n) => {
-                                                debug!("Wrote '{}' bytes for the artifact '{}' to '{}'", n, artifact.name, format!("{}.{}",artifact.name,self._extension));
-                                                if let Err(e) = self._output_file.flush() {
-                                                    error!("Unable to flush stream, ERROR: {}", e);
+                                        Err(_) => match child.try_wait() {
+                                            Ok(Some(status)) => {
+                                                let status_code = match status.code() {
+                                                    Some(code) => format!("{code}"),
+                                                    None => String::from("UNKNOWN"),
                                                 };
+                                                info!(
+                                                        "Process for the command '{}' and PID '{}' exited with the status: {}, finished writing the results", 
+                                                        command,
+                                                        pid,
+                                                        status_code
+                                                        );
+                                                break;
+                                            }
+                                            Ok(None) => {
+                                                debug!("Process with the PID '{pid}' still running, keep reading stdout");
                                             }
                                             Err(e) => {
-                                                error!("Unable to write the results for the artifact '{}' to '{}', ERROR: '{}'", artifact.name, format!("{}.{}",artifact.name,self._extension), e);
+                                                error!("Error retriving process status for the process with the PID: {pid}, ERROR: {e}");
                                             }
-                                        }
-                                        counter += 1;
+                                        },
                                     }
                                 }
-                                counter = 0;
-                                for line in String::from_utf8_lossy(&result.stderr).split("\n") {
-                                    if !line.is_empty() {
-                                        let mut row = json!({
-                                            "line": counter,
-                                            "stderr": line
-                                        });
-
-                                        if let Some(data) = artifact.map(&row) {
-                                            row = data;
-                                        }
-
-                                        let data = self.format(&row, &artifact);
-                                        match self._output_file.write(data.as_bytes()) {
-                                            Ok(n) => {
-                                                debug!("Wrote '{}' bytes for the artifact '{}' to '{}'", n, artifact.name, format!("{}.{}",artifact.name,self._extension));
-                                                if let Err(e) = self._output_file.flush() {
-                                                    error!("Unable to flush stream, ERROR: {}", e);
-                                                };
-                                            }
-                                            Err(e) => {
-                                                error!("Unable to write the results for the artifact '{}' to '{}', ERROR: '{}'", artifact.name, format!("{}.{}",artifact.name,self._extension), e);
-                                            }
-                                        }
-                                        counter += 1;
-                                    }
+                                None => {
+                                    error!("Unable to retrive stdout stream for the command '{}' for the artifact '{}'", command, artifact.name);
                                 }
                             }
-                            Err(error) => {
-                                error!(
-                                    "Unable to execute the command '{} -c {}', ERROR: {:?}",
-                                    &shell, command, error
-                                );
+
+                            if started_execution.elapsed() >= timeout_in {
+                                match child.kill() {
+                                    Ok(_) => match child.wait() {
+                                        Ok(status) => {
+                                            let code = match status.code() {
+                                                Some(scode) => format!("{scode}"),
+                                                None => String::from("UNKNOWN"),
+                                            };
+                                            info!("Process for the command '{}' (PID: {}) for the artifact '{}' killed due to timeout, Status: {}",command, pid, artifact.name, code);
+                                        }
+                                        Err(e) => {
+                                            warn!("Unable to kill the process for the command '{}' (PID: {}) for the artifact '{}', ERROR: {}",command, pid, artifact.name, e);
+                                        }
+                                    },
+                                    Err(e) => {
+                                        warn!("Unable to kill the process for the command '{}' (PID: {}) for the artifact '{}', ERROR: {}",command, pid, artifact.name, e);
+                                    }
+                                }
+                                break;
                             }
-                        };
+                        }
+
+                        counter = 0;
+
+                        // Keep reading stderr until the process exits or the process is killed due to timeout
+                        loop {
+                            match child.stderr.as_mut() {
+                                Some(stderr) => match stderr.read_until(0xA) {
+                                    Ok(line) => {
+                                        if !line.is_empty() {
+                                            let mut row = json!({
+                                                "line": counter,
+                                                "stderr": line
+                                            });
+
+                                            if let Some(data) = artifact.map(&row) {
+                                                row = data;
+                                            }
+
+                                            let data = self.format(&row, &artifact);
+                                            match self._output_file.write(data.as_bytes()) {
+                                                Ok(n) => {
+                                                    debug!(
+                                                        "Wrote '{}' bytes for the artifact '{}' to '{}'",
+                                                        n,
+                                                        artifact.name,
+                                                        format!("{}.{}", artifact.name, self._extension)
+                                                    );
+                                                    if let Err(e) = self._output_file.flush() {
+                                                        error!(
+                                                            "Unable to flush stream, ERROR: {}",
+                                                            e
+                                                        );
+                                                    };
+                                                }
+                                                Err(e) => {
+                                                    error!("Unable to write the results for the artifact '{}' to '{}', ERROR: '{}'", artifact.name, format!("{}.{}",artifact.name,self._extension), e);
+                                                }
+                                            }
+                                            counter += 1;
+                                        }
+                                    }
+                                    Err(_) => {
+                                        debug!("Done reading the stderr for the command '{}' (PID: {}) for the artifact '{}'", command, pid, artifact.name);
+                                        break;
+                                    }
+                                },
+                                None => {
+                                    error!("Unable to retrive stderr stream for the command '{}' for the artifact '{}'", command, artifact.name);
+                                }
+                            }
+                        }
                     }
                 }
                 ArtifactType::Parse => {

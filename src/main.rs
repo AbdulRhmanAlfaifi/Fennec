@@ -29,14 +29,14 @@ use zip::{write::FileOptions, CompressionMethod, ZipWriter};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[derive(RustEmbed)]
 #[folder = "deps/linux/"]
-#[include = "config.yaml"]
+#[include = "fennec.yaml"]
 #[include = "x86_64/osqueryd"]
 #[prefix = ""]
 struct Asset;
 #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 #[derive(RustEmbed)]
 #[folder = "deps/linux/"]
-#[include = "config.yaml"]
+#[include = "fennec.yaml"]
 #[include = "aarch64/osqueryd"]
 #[prefix = ""]
 struct Asset;
@@ -211,7 +211,7 @@ fn main() {
 
     let config_asset_name = match Asset::iter()
         .into_iter()
-        .find(|asset_name| asset_name.contains("config.yaml"))
+        .find(|asset_name| asset_name.contains("fennec.yaml"))
     {
         Some(asset_name) => asset_name.to_string().clone(),
         None => String::new(),
@@ -248,7 +248,7 @@ fn main() {
     )
     .get_matches();
 
-    let embedded_config = match Asset::get("config.yaml") {
+    let embedded_config = match Asset::get("fennec.yaml") {
         Some(embedded_config) => Some(embedded_config.data),
         None => None,
     };

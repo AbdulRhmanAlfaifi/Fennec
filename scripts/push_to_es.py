@@ -11,6 +11,7 @@ parser = argparse.ArgumentParser(
 )
 parser.add_argument("ES_URL", help="Elasticsearch URL (ex. http://127.0.0.1:9200)")
 parser.add_argument("PATH", help="Path to Fennec triage image")
+parser.add_argument("-i","--index", help="Elasticsearch index, default is 'fennec'", default="fennec")
 
 args = parser.parse_args()
 es = Elasticsearch(args.ES_URL)
@@ -40,7 +41,7 @@ with ZipFile(args.PATH, "r") as zip:
 
                     data.update(record)
                     # print(data)
-                    es.index(index="fennec", body=data)
+                    es.index(index=args.index, body=data)
                 print(f"[!] Done processing the file '{name}'")
 
 endTime = time.time()
