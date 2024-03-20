@@ -1,6 +1,6 @@
 [package]
 name = "fennec"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 homepage = "https://github.com/AbdulRhmanAlfaifi/Fennec"
 repository = "https://github.com/AbdulRhmanAlfaifi/Fennec"
@@ -33,3 +33,4 @@ colored = "^2.0.0"
 aws-creds = { default-features = false , version = "^0.29.1", features = ["rustls-tls"] }
 rust-s3 = { default-features = false , version = "^0.31.0", features = ["sync-rustls-tls"] }
 ssh-rs = "^0.1.5"
+ctrlc = {version = "^3.4.1", features = ["termination"]}

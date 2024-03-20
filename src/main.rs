@@ -94,6 +94,7 @@ macro_rules! init_args {
         .arg(
             Arg::new("config")
                 .short('c')
+                .display_order(0)
                 .long("config")
                 .value_name("FILE")
                 .help(format!("Sets a custom config file (Embedded : {})", $config_embedded).as_ref())
@@ -103,6 +104,7 @@ macro_rules! init_args {
             Arg::new("timeout")
                 .short('t')
                 .long("timeout")
+                .display_order(6)
                 .value_name("SEC")
                 .help("Sets osquery queries timeout in seconds")
                 .default_value("60")
@@ -122,6 +124,7 @@ macro_rules! init_args {
             Arg::new("log_path")
                 .short('f')
                 .long("log-file")
+                .display_order(3)
                 .value_name("FILE")
                 .help("Sets the log file name")
                 .default_value($default_log_path)
@@ -131,6 +134,7 @@ macro_rules! init_args {
             Arg::new("log_level")
                 .short('l')
                 .long("log-level")
+                .display_order(2)
                 .value_name("LEVEL")
                 .help("Sets the log level")
                 .takes_value(true)
@@ -141,6 +145,7 @@ macro_rules! init_args {
             Arg::new("output")
                 .short('o')
                 .long("output")
+                .display_order(1)
                 .value_name("FILE")
                 .help("Sets output file name")
                 .takes_value(true)
@@ -167,6 +172,7 @@ macro_rules! init_args {
             Arg::new("upload_artifact")
                 .short('u')
                 .long("upload-artifact")
+                .display_order(4)
                 .value_name("CONFIG")
                 .help(r#"Upload configuration string. Supported Protocols: 
 * s3 : Upload artifact package to S3 bucket (ex. minio)
@@ -183,9 +189,15 @@ macro_rules! init_args {
                 .multiple_values(true)
         )
         .arg(
+            Arg::new("non-root")
+                .long("non-root")
+                .help("Run Fennec with non root permisions. This isn't recommended, most artifacts require root permissions")
+        )
+        .arg(
             Arg::new("quiet")
                 .short('q')
                 .long("quiet")
+                .display_order(5)
                 .help("Do not print logs to stdout"),
         )
     };
@@ -294,6 +306,14 @@ fn main() {
         }
     };
 
+    let non_root = match cli_matches.occurrences_of("non-root") {
+        0 => match conf_matches.occurrences_of("non-root") {
+            0 => false,
+            _ => true,
+        },
+        _ => true,
+    };
+
     let quiet = match cli_matches.occurrences_of("quiet") {
         0 => match conf_matches.occurrences_of("quiet") {
             0 => false,
@@ -367,8 +387,10 @@ fn main() {
     }
 
     if !Uid::effective().is_root() {
-        error!("You must run this executable with root permissions");
-        exit(1);
+        if !non_root {
+            error!("Running as non-root user, rerun Fennec as root or use the argument '--non-root' to run with normal user permissions (not recommended)");
+            exit(1);
+        }
     }
 
     if !quiet {
@@ -389,7 +411,11 @@ fn main() {
         println!("{}", ascii_art);
     }
 
-    info!("Started '{}'", env!("CARGO_PKG_NAME"));
+    if !Uid::effective().is_root() {
+        warn!("Running Fennec as non root, this isn't recommended");
+    }
+
+    info!("Started Fennec {}", env!("CARGO_PKG_VERSION"));
 
     let config = match cli_matches.value_of("config") {
         Some(config_path) => {
@@ -511,6 +537,38 @@ fn main() {
         .set_osquery_binary_path(osquery_path)
         .set_timeout(timeout)
         .set_options(&foptions);
+
+    let zip_path = output.to_owned();
+    let files_to_cleanup = to_cleanup.clone().to_owned();
+
+    match ctrlc::set_handler(move || {
+        warn!(
+            "Fennec interupted. Running cleanup, the ZIP file '{}' didn't close successfully",
+            zip_path
+        );
+
+        for path in &files_to_cleanup {
+            match fs::remove_file(&path) {
+                Ok(_) => {
+                    info!("Successfuly deleted the file '{}'", path);
+                }
+                Err(e) => {
+                    error!(
+                        "Unable to remove the files '{}', Please remove manually, ERROR: '{}'",
+                        path, e
+                    );
+                }
+            }
+        }
+        exit(130);
+    }) {
+        Ok(_) => {
+            debug!("Signal handler set successfully");
+        }
+        Err(e) => {
+            error!("Failed setting signal handler, ERROR: {:?}", e);
+        }
+    }
 
     match fennec.triage() {
         Ok(_) => {
