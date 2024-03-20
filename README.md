@@ -16,11 +16,11 @@ fennec is an artifact collection tool written in Rust to be used during incident
 
 * 🦀 A single statically compiled binary 
 * 🔬 Execute any osquery SQL query 
-* 💻 Execute system commands 
+* 💻 Execute system commands and parse there output
 * 📚 Parse any text file using regex 
 * 🧰 Ability to collect system logs and files 
 * 🧱 Return data in structured manner 
-* 🃏  Support multiple output formats (JSONL, CSV and KJSON) 
+* 🃏 Support multiple output formats (JSONL, CSV and KJSON) 
 * 🤸‍♀️ Flexible configuration file 
 * 💾 Directly write to ZIP file to save space 
 * ⚡ Very fast!
@@ -44,11 +44,12 @@ fennec is an artifact collection tool written in Rust to be used during incident
 | CentOS 5.11            | x86_64       | ❌        | osquery requires libc >= 2.12                                |
 | Ubuntu 20.04           | aarch64      | ✅        |                                                              |
 | MacOS Monterey v12.0.1 | x86_64       | ✅        | configuration tuning is required. If you have experience in **MacOS** artifact feel free to contribute |
+| Oracle Linux Server 7.9 | x86_64       | ✅        |                                                             |
 
 ## Usage ✍
 
 ```verilog
-fennec 0.4.0
+fennec 0.4.1
 AbdulRhman Alfaifi <aalfaifi@u0041.co>
 Aritfact collection tool for *nix systems
 
@@ -59,36 +60,14 @@ OPTIONS:
     -c, --config <FILE>
             Sets a custom config file (Embedded : true)
 
-    -f, --log-file <FILE>
-            Sets the log file name [default: fennec.log]
-
-    -h, --help
-            Print help information
+    -o, --output <FILE>
+            Sets output file name [default: ABDULRHMAN-PC.zip]
 
     -l, --log-level <LEVEL>
             Sets the log level [default: info] [possible values: trace, debug, info, error]
 
-    -o, --output <FILE>
-            Sets output file name [default: ABDULRHMAN-PC.zip]
-
-        --osquery-path <PATH>
-            Sets osquery path, if osquery is embedded it will be writen to this path otherwise the
-            path will be used to spawn osquery instance (Embedded : true) [default: ./osqueryd]
-
-        --output-format <FORMAT>
-            Sets output format [default: jsonl] [possible values: jsonl, csv, kjson]
-
-    -q, --quiet
-            Do not print logs to stdout
-
-        --show-config
-            Show the embedded configuration file
-
-        --show-embedded
-            Show the embedded files metadata
-
-    -t, --timeout <SEC>
-            Sets osquery queries timeout in seconds [default: 60]
+    -f, --log-file <FILE>
+            Sets the log file name [default: fennec.log]
 
     -u, --upload-artifact <CONFIG>...
             Upload configuration string. Supported Protocols:
@@ -102,6 +81,32 @@ OPTIONS:
             * scp : Upload artifact package to a server using SCP protocol
                 * Format : scp://<USERNAME>:<PASSWORD>@<HOSTNAME>:<PORT>:<PATH>
                 * Example: scp://testusername:testpassword@192.168.100.190:22:/dev/shm
+
+    -q, --quiet
+            Do not print logs to stdout
+
+    -t, --timeout <SEC>
+            Sets osquery queries timeout in seconds [default: 60]
+
+    -h, --help
+            Print help information
+
+        --non-root
+            Run Fennec with non root permisions. This isn't recommended, most artifacts require root
+            permissions
+
+        --osquery-path <PATH>
+            Sets osquery path, if osquery is embedded it will be writen to this path otherwise the
+            path will be used to spawn osquery instance (Embedded : true) [default: ./osqueryd]
+
+        --output-format <FORMAT>
+            Sets output format [default: jsonl] [possible values: jsonl, csv, kjson]
+
+        --show-config
+            Show the embedded configuration file
+
+        --show-embedded
+            Show the embedded files metadata
 
     -V, --version
             Print version information
@@ -120,6 +125,7 @@ OPTIONS:
   * csv: Comma separated values
   * kjson: Use this format if you want to upload the resulting file to [Kuiper](https://github.com/DFIRKuiper/Kuiper) analysis platform.
 * `-q`, `--quiet` : Do not print logs to `stdout`
+* `--non-root`: Run Fennec with non root permissions. By default, Fennec requires `root` permissions and it will exit with error message if not root.
 * `--show-config` : Print the embedded configuration then exit
 * `--show-embedded` : Show embedded files
 * `-t`, `--timeout` : Sets the timeout in seconds for each osquery in query artifact type

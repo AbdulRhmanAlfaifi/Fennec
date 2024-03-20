@@ -1,17 +1,5 @@
 name: Build & Test
-on:
-  push:
-    paths-ignore:
-      - ".github/**"
-      - "screenshots/**"
-      - "README.md"
-    tags-ignore:
-      - v*
-  pull_request:
-    paths-ignore:
-      - ".github/**"
-      - "screenshots/**"
-      - "README.md"
+on: workflow_dispatch
 jobs:
   build_linux:
     runs-on: ubuntu-latest
