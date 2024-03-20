@@ -1,7 +1,7 @@
 name: Build & Test
 on: workflow_dispatch
 jobs:
-  build_linux:
+  build_linux_x86_64:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository code
@@ -12,12 +12,46 @@ jobs:
       - name: Build Fennec for the target x86_64-unknown-linux-gnu as static binary
         run: |
           export PATH="$HOME/.cargo/bin:$PATH";RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --target x86_64-unknown-linux-gnu
+      - name: Compress executable using upx
+        run: |
+          apt update && apt install upx -y
+          ls -lah ./target/x86_64-unknown-linux-gnu/release/fennec
+          upx ./target/x86_64-unknown-linux-gnu/release/fennec
+          ls -lah ./target/x86_64-unknown-linux-gnu/release/fennec
       - name: Check if Fennec build successfuly
         run: |
           ./target/x86_64-unknown-linux-gnu/release/fennec -h
-          sudo ./target/x86_64-unknown-linux-gnu/release/fennec
-          ls -lah ./$HOSTNAME.zip
-  build_darwin:
+      - name: Upload fennec linux binary as artifact
+        uses: actions/upload-artifact@v1
+        with:
+          name: fennec_linux_x86_64
+          path: ./target/x86_64-unknown-linux-gnu/release/fennec
+  build_linux_aarch64:
+    runs-on: self-hosted
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v2
+      - name: Download and install rust latest version
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      - name: Build Fennec for the target aarch64-unknown-linux-gnu as static binary
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH";RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --target aarch64-unknown-linux-gnu
+      # - name: Compress executable using upx
+      #   run: |
+      #     ls -lah ./target/aarch64-unknown-linux-gnu/release/fennec
+      #     upx ./target/aarch64-unknown-linux-gnu/release/fennec
+      #     ls -lah ./target/aarch64-unknown-linux-gnu/release/fennec
+      - name: Check if Fennec build successfuly
+        run: |
+          ./target/aarch64-unknown-linux-gnu/release/fennec -h
+      - name: Upload fennec linux binary as artifact
+        uses: actions/upload-artifact@v1
+        with:
+          name: fennec_linux_aarch64
+          path: ./target/aarch64-unknown-linux-gnu/release/fennec
+
+  build_darwin_x86_64:
     runs-on: macos-latest
     steps:
       - name: Check out repository code
@@ -28,11 +62,42 @@ jobs:
       - name: Build Fennec for the target x86_64-apple-darwin as static binary
         run: |
           export PATH="$HOME/.cargo/bin:$PATH"; RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --target x86_64-apple-darwin
+      - name: Compress executable using upx
+        run: |
+          brew install upx
+          ls -lah ./target/x86_64-apple-darwin/release/fennec
+          upx ./target/x86_64-apple-darwin/release/fennec
+          ls -lah ./target/x86_64-apple-darwin/release/fennec
       - name: Check if Fennec build successfuly
         run: |
           ./target/x86_64-apple-darwin/release/fennec -h
-      - name: Test Fennec
+      - name: Upload fennec darwin x86_64 binary as artifact
+        uses: actions/upload-artifact@v1
+        with:
+          name: fennec_darwin_x86_64
+          path: ./target/x86_64-apple-darwin/release/fennec
+
+  build_darwin_aarch64:
+    runs-on: macos-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v2
+      - name: Download and install rust latest version
         run: |
-          ./target/x86_64-apple-darwin/release/fennec -h
-          sudo ./target/x86_64-apple-darwin/release/fennec
-          ls -lah ./$HOSTNAME.zip
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      - name: Build Fennec for the target aarch64-apple-darwin as static binary
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          rustup target add aarch64-apple-darwin
+          RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --target aarch64-apple-darwin
+      - name: Compress executable using upx
+        run: |
+          brew install upx
+          ls -lah ./target/aarch64-apple-darwin/release/fennec
+          upx ./target/aarch64-apple-darwin/release/fennec
+          ls -lah ./target/aarch64-apple-darwin/release/fennec
+      - name: Upload fennec darwin aarch64 binary as artifact
+        uses: actions/upload-artifact@v1
+        with:
+          name: fennec_darwin_aarch64
+          path: ./target/aarch64-apple-darwin/release/fennec
